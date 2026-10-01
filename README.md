@@ -1,6 +1,6 @@
 # Nook
 
-A small multiplayer 2D world in the spirit of Gather and Habbo. Rooms are not predefined: anyone can create, name, size, place, move, resize and delete them in an editor, and rooms can never overlap or leave the world. The same world is walkable, and chat is scoped to the room you stand in.
+A small multiplayer 2D world in the spirit of Gather and Habbo. Rooms are not predefined: anyone can create, name, size and place a room in an editor, and rooms can never overlap or leave the world. Only the person who created a room can move, resize, rename or delete it. The same world is walkable, and chat is scoped to the room you stand in.
 
 - Frontend: Vite, React, TypeScript, one Canvas 2D element for the world
 - Backend: Node, Express, Socket.IO, one process, rooms saved to a JSON file
@@ -18,11 +18,12 @@ That starts the backend on `http://localhost:3001` and the frontend on `http://l
 
 ## Test multiplayer with two windows
 
-Every browser tab is its own user, so any of these gives you two users on the same backend:
+Use two browsers that do not share storage, so each is a separate person:
 
-- a normal Chrome window and an Incognito window
+- a normal Chrome window and an Incognito window, or
 - two Chrome profiles
-- two tabs in the same window
+
+Two tabs in the same window also give you two avatars, but they count as the same person for room ownership.
 
 With both open on `http://localhost:5173`:
 
@@ -31,9 +32,10 @@ With both open on `http://localhost:5173`:
 3. Press Enter, type, press Enter. The message appears in both windows while both are in the same room.
 4. Walk one avatar out of the room. The other window logs `<name> left`, and messages no longer cross between them.
 5. Walk it into the room the other avatar is in. That window logs `<name> entered`, and chat works again.
-6. Switch one window to **Edit world**, create a room and click a free spot. It appears in the other window.
-7. Drag a room onto another one. It turns red and snaps back when released. Move, resize or delete a room and watch the other window follow.
-8. Close one window. The other drops to `1 online`.
+6. Switch both windows to **Edit world**. In the first, create a room and click a free spot. It appears in the second window, dimmed.
+7. In the first window, drag the room onto another one. It turns red and snaps back when released. Move or resize it and watch the second window follow.
+8. In the second window, select that room. The panel shows who created it and has no fields, dragging it only pans the map, and Delete is refused.
+9. Close one window. The other drops to `1 online`.
 
 Both servers listen on this machine only. To let a phone or another laptop on the same network join, set `HOST=0.0.0.0` in `.env`, run `npm run dev:server` in one terminal and `npm run dev:web -- --host` in another, then open the network URL that Vite prints. The operating system may ask to allow Node through its firewall.
 
@@ -53,11 +55,11 @@ Edit mode
 | Input | Action |
 | --- | --- |
 | Create room, then click | Place a new room (green fits, red overlaps) |
-| Click a room | Select it |
-| Drag a room | Move it |
-| Drag an edge or corner | Resize it |
-| Arrow keys | Nudge the selected room (Shift for bigger steps) |
-| Delete | Delete the selected room |
+| Click a room | Select it and see who created it |
+| Drag your room | Move it |
+| Drag an edge or corner of your room | Resize it |
+| Arrow keys | Nudge your selected room (Shift for bigger steps) |
+| Delete | Delete your selected room |
 | Esc | Cancel placing or deselect |
 | Drag empty space, scroll | Pan and zoom |
 
@@ -73,6 +75,14 @@ The server owns the world. Room edits are sent with an acknowledgement:
 The client applies its own edits immediately and rolls back on a rejection. On every connect or reconnect it asks for a full snapshot.
 
 Each world room maps to a Socket.IO room. The server decides which room a player is in from their position, moves the socket between Socket.IO rooms as they walk, and sends chat only to that room. Everyone outside a room shares one channel.
+
+### Who can edit a room
+
+There are no accounts. Each browser keeps a random secret key in `localStorage` and sends it when it connects. The server turns the key into a public user id (a SHA-256 digest), records that id as the owner of every room the browser creates, and refuses any move, resize, rename or delete that comes from a different id. The owner is never taken from what a client sends, and other clients only ever see the id, not the key.
+
+- The key is per browser profile, so a reload, a new tab or a server restart keeps your rooms yours.
+- Clearing site data, or closing an Incognito session, discards the key. Rooms created with it stay in the world and nobody can edit them any more.
+- The three starter rooms have no owner and are locked for everyone.
 
 ```
 shared/    types, constants, geometry rules, socket event types
@@ -107,10 +117,10 @@ Pointing the frontend at a hosted backend later only needs `VITE_SERVER_URL`, pl
 
 ## Resetting the world
 
-Rooms are saved in `data/world.json`. Stop the backend and delete that file to start again with the three starter rooms.
+Rooms are saved in `data/world.json`. Stop the backend and delete that file to start again with the three starter rooms. This is also the way to clear rooms whose owner key is gone.
 
 ## Not built yet
 
 - Production deployment of the backend
-- Accounts: anyone who can open the page can edit the world
+- Accounts: ownership follows the browser, not a login, so it cannot be recovered or moved to another device
 - Chat history: messages are not stored
