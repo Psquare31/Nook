@@ -1,0 +1,76 @@
+:root {
+  --bg: #14151f;
+  --surface: rgba(27, 29, 42, 0.94);
+  --surface-raised: #262939;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #eceef6;
+  --muted: #9aa0b8;
+  --accent: #7c6cf2;
+  --accent-strong: #9488ff;
+  --ok: #3ecf8e;
+  --danger: #f2617a;
+  --radius: 12px;
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+.app {
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: #1b1d2a;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.2px;
+}
+
+.brand-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent-strong), #f2a6c8);
+}
+
+.stage {
+  position: relative;
+  overflow: hidden;
+}
