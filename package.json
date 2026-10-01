@@ -11,7 +11,8 @@
     "test": "vitest run",
     "dev:web": "vite",
     "dev:server": "tsx watch server/index.ts",
-    "server": "tsx server/index.ts"
+    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --format=esm --packages=external --sourcemap --outfile=dist-server/index.js",
+    "start": "node --enable-source-maps dist-server/index.js"
   },
   "dependencies": {
     "agora-rtc-sdk-ng": "^4.24.8",
@@ -30,6 +31,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",

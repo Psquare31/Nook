@@ -129,7 +129,7 @@ Nothing needs to be set for local use without voice. To override a default, copy
 | `AGORA_APP_CERTIFICATE` | backend | empty | Agora project certificate, used to sign voice tokens |
 | `VITE_SERVER_URL` | frontend | this host, port 3001 | Address of the backend |
 
-Pointing the frontend at a hosted backend later only needs `VITE_SERVER_URL`, plus `CLIENT_ORIGIN` on that backend.
+A hosted setup needs `VITE_SERVER_URL` on the frontend and `CLIENT_ORIGIN` on the backend. With `CLIENT_ORIGIN` set, the backend refuses connections from pages served anywhere else.
 
 ## Scripts
 
@@ -140,6 +140,12 @@ Pointing the frontend at a hosted backend later only needs `VITE_SERVER_URL`, pl
 | `npm run dev:web` | Frontend only |
 | `npm test` | Unit tests and server tests |
 | `npm run build` | Type-check and build the frontend into `dist/` |
+| `npm run build:server` | Bundle the backend into `dist-server/` for production |
+| `npm start` | Run the bundled backend with plain Node |
+
+## Deploying
+
+[DEPLOY.md](DEPLOY.md) walks through putting the backend on an Oracle Cloud Always Free VM (PM2, Nginx, Let's Encrypt) and the frontend on Vercel, with every command.
 
 ## Resetting the world
 
@@ -147,6 +153,6 @@ Rooms are saved in `data/world.json`. Stop the backend and delete that file to s
 
 ## Not built yet
 
-- Production deployment of the backend
 - Accounts: ownership follows the browser, not a login, so it cannot be recovered or moved to another device
 - Chat history: messages are not stored
+- Rate limits: nothing stops a visitor from flooding the chat or filling the world with rooms
