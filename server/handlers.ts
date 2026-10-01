@@ -11,7 +11,7 @@ function channel(roomId: string | null): string {
   return roomId ? `room:${roomId}` : 'outside';
 }
 
-export function registerHandlers(io: NookServer, state: WorldState, onRoomsChanged: () => void) {
+export function registerHandlers(io: NookServer, state: WorldState, saveRooms: () => void) {
   const switchChannel = ({ player, previous }: RoomChange) => {
     const socket = io.sockets.sockets.get(player.id);
     socket?.leave(channel(previous));
@@ -20,13 +20,11 @@ export function registerHandlers(io: NookServer, state: WorldState, onRoomsChang
   };
 
   const roomsChanged = () => {
-    onRoomsChanged();
+    saveRooms();
     state.refreshOccupancy().forEach(switchChannel);
   };
 
   io.on('connection', (socket) => {
-    const joined = () => state.getPlayer(socket.id) !== undefined;
-
     socket.on('join', (request, ack) => {
       if (typeof ack !== 'function') return;
 
@@ -45,8 +43,10 @@ export function registerHandlers(io: NookServer, state: WorldState, onRoomsChang
     });
 
     socket.on('room:create', (room, ack) => {
-      if (typeof ack !== 'function' || !joined()) return;
-      const result = state.createRoom(room);
+      const player = state.getPlayer(socket.id);
+      if (typeof ack !== 'function' || !player) return;
+
+      const result = state.createRoom(room, { id: player.userId, name: player.name });
       ack(result);
       if (result.ok) {
         socket.broadcast.emit('room:created', result.room);
@@ -55,8 +55,10 @@ export function registerHandlers(io: NookServer, state: WorldState, onRoomsChang
     });
 
     socket.on('room:update', (room, ack) => {
-      if (typeof ack !== 'function' || !joined()) return;
-      const result = state.updateRoom(room);
+      const player = state.getPlayer(socket.id);
+      if (typeof ack !== 'function' || !player) return;
+
+      const result = state.updateRoom(room, player.userId);
       ack(result);
       if (result.ok) {
         socket.broadcast.emit('room:updated', result.room);
@@ -65,10 +67,12 @@ export function registerHandlers(io: NookServer, state: WorldState, onRoomsChang
     });
 
     socket.on('room:delete', (id, ack) => {
-      if (typeof ack !== 'function' || !joined()) return;
-      const removed = state.deleteRoom(id);
-      ack({ ok: true });
-      if (removed) {
+      const player = state.getPlayer(socket.id);
+      if (typeof ack !== 'function' || !player) return;
+
+      const result = state.deleteRoom(id, player.userId);
+      ack(result.ok ? { ok: true } : result);
+      if (result.ok && result.removed) {
         socket.broadcast.emit('room:deleted', id);
         roomsChanged();
       }
@@ -84,8 +88,12 @@ export function registerHandlers(io: NookServer, state: WorldState, onRoomsChang
     });
 
     socket.on('player:rename', (name) => {
-      const player = state.renamePlayer(socket.id, name);
-      if (player) io.emit('player:renamed', { id: player.id, name: player.name });
+      const result = state.renamePlayer(socket.id, name);
+      if (!result) return;
+
+      io.emit('player:renamed', { id: result.player.id, name: result.player.name });
+      for (const room of result.rooms) io.emit('room:updated', room);
+      if (result.rooms.length > 0) saveRooms();
     });
 
     socket.on('chat:send', (text) => {

@@ -27,7 +27,7 @@ export const PLAYER_COLORS = [
 export const SPAWN: Point = { x: 2000, y: 1500 };
 
 export const STARTER_ROOMS: Room[] = [
-  { id: 'lounge', name: 'Lounge', x: 1700, y: 1300, width: 600, height: 400 },
-  { id: 'workshop', name: 'Workshop', x: 1200, y: 1300, width: 400, height: 250 },
-  { id: 'library', name: 'Library', x: 2400, y: 1300, width: 450, height: 300 },
+  { id: 'lounge', name: 'Lounge', x: 1700, y: 1300, width: 600, height: 400, owner: null },
+  { id: 'workshop', name: 'Workshop', x: 1200, y: 1300, width: 400, height: 250, owner: null },
+  { id: 'library', name: 'Library', x: 2400, y: 1300, width: 450, height: 300, owner: null },
 ];

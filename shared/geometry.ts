@@ -1,5 +1,5 @@
 import { GRID, ROOM_MAX, ROOM_MIN, ROOM_NAME_MAX } from './constants';
-import type { Point, Rect, Room, World } from './types';
+import type { Point, Rect, RoomShape, World } from './types';
 
 export type PlacementReason = 'name' | 'size' | 'bounds' | 'overlap';
 
@@ -25,7 +25,7 @@ export function roomsOverlap(a: Rect, b: Rect): boolean {
   );
 }
 
-export function findOverlaps(candidate: Room, rooms: Iterable<Room>): string[] {
+export function findOverlaps(candidate: RoomShape, rooms: Iterable<RoomShape>): string[] {
   const ids: string[] = [];
   for (const room of rooms) {
     if (room.id !== candidate.id && roomsOverlap(candidate, room)) ids.push(room.id);
@@ -60,7 +60,7 @@ export function contains(rect: Rect, point: Point): boolean {
   );
 }
 
-export function roomAt(point: Point, rooms: Iterable<Room>): Room | null {
+export function roomAt<T extends Rect>(point: Point, rooms: Iterable<T>): T | null {
   for (const room of rooms) {
     if (contains(room, point)) return room;
   }
@@ -75,7 +75,11 @@ function reject(reason: PlacementReason): Validation {
   return { ok: false, reason, conflicts: [] };
 }
 
-export function validateRoom(candidate: Room, rooms: Iterable<Room>, world: World): Validation {
+export function validateRoom(
+  candidate: RoomShape,
+  rooms: Iterable<RoomShape>,
+  world: World,
+): Validation {
   const name = candidate.name.trim();
   if (name.length === 0 || name.length > ROOM_NAME_MAX) return reject('name');
   if (!sizeAllowed(candidate.width) || !sizeAllowed(candidate.height)) return reject('size');

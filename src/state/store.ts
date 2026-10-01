@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { WORLD } from '../../shared/constants';
 import type { PlacementReason } from '../../shared/geometry';
 import type { Snapshot } from '../../shared/protocol';
-import type { Player, Room, World } from '../../shared/types';
+import type { Player, Room, RoomOwner, World } from '../../shared/types';
 import { newId } from '../lib/id';
 import { loadName } from '../lib/session';
 
@@ -64,8 +64,8 @@ const TOAST_MS = 3200;
 const CHAT_HISTORY = 200;
 let toastId = 0;
 
-function toInfo({ id, name, color, roomId }: Player): PlayerInfo {
-  return { id, name, color, roomId };
+function toInfo({ id, userId, name, color, roomId }: Player): PlayerInfo {
+  return { id, userId, name, color, roomId };
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -150,4 +150,16 @@ export const useStore = create<State>((set, get) => ({
 
 export function selfPlayer(state: State): PlayerInfo | undefined {
   return state.selfId ? state.players[state.selfId] : undefined;
+}
+
+export function selfOwner(state: State): RoomOwner | null {
+  const me = selfPlayer(state);
+  return me ? { id: me.userId, name: me.name } : null;
+}
+
+// Mirrors the server's rule so the editor can show what is locked. The server still
+// checks every edit itself.
+export function canEdit(state: State, room: Room): boolean {
+  const me = selfPlayer(state);
+  return me !== undefined && room.owner?.id === me.userId;
 }

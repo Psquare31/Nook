@@ -2,7 +2,7 @@ import { PLAYER_COLORS, PLAYER_RADIUS } from '../../shared/constants';
 import { roomsOverlap } from '../../shared/geometry';
 import type { Rect, Room, World } from '../../shared/types';
 import { HANDLES, handlePoint } from '../editor/handles';
-import { selfPlayer, useStore, type Draft } from '../state/store';
+import { canEdit, selfPlayer, useStore, type Draft } from '../state/store';
 import { bubbles, remotes, self } from './avatars';
 import { camera, viewport, visibleRect, worldToScreen } from './camera';
 
@@ -19,6 +19,8 @@ const COLORS = {
   plateText: '#f4f5fb',
   accent: '#8f81ff',
   accentDeep: '#5b4bd6',
+  locked: '#c9ccdb',
+  veil: 'rgba(16, 17, 25, 0.34)',
   valid: '#3ecf8e',
   validFill: 'rgba(62, 207, 142, 0.22)',
   invalid: '#f2617a',
@@ -364,6 +366,7 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
       ? draft.room
       : rooms[selectedId]
     : undefined;
+  const editable = selected !== undefined && canEdit(state, selected);
 
   const me = selfPlayer(state);
   const sprites: Sprite[] = [];
@@ -398,9 +401,18 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
   drawGround(ctx, world, view, zoom);
   for (const room of visible) drawShadow(ctx, room);
   for (const room of visible) drawRoom(ctx, room, view, zoom);
+  if (mode === 'edit') {
+    // Rooms this user cannot change are dimmed, so their own stand out.
+    ctx.fillStyle = COLORS.veil;
+    for (const room of visible) {
+      if (!canEdit(state, room)) ctx.fillRect(room.x, room.y, room.width, room.height);
+    }
+  }
   if (current) strokeOutline(ctx, current, COLORS.accent, zoom, 3);
   if (draft) drawDraft(ctx, draft, rooms, view, zoom);
-  if (selected && selected !== draft?.room) strokeOutline(ctx, selected, COLORS.accent, zoom);
+  if (selected && selected !== draft?.room) {
+    strokeOutline(ctx, selected, editable ? COLORS.accent : COLORS.locked, zoom);
+  }
   for (const sprite of sprites) drawAvatar(ctx, sprite);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -411,6 +423,6 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
     const bubble = bubbles.get(sprite.id);
     if (bubble && bubble.until > now) drawBubble(ctx, sprite, bubble.text, zoom);
   }
-  if (selected) drawHandles(ctx, selected);
+  if (selected && editable) drawHandles(ctx, selected);
   if (draft) drawDimensions(ctx, draft);
 }

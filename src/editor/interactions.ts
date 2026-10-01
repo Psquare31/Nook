@@ -3,7 +3,7 @@ import { clampToWorld, roomAt, snap, validateRoom } from '../../shared/geometry'
 import type { Point, Room } from '../../shared/types';
 import { isTyping } from '../lib/dom';
 import { createRoom, deleteRoom, describeRejection, updateRoom } from '../state/actions';
-import { useStore, type Draft } from '../state/store';
+import { canEdit, selfOwner, useStore, type Draft } from '../state/store';
 import { camera, panBy, screenToWorld, viewport, zoomAt, zoomBy } from '../world/camera';
 import { handleCursor, hitHandle, resizeRect, type Handle } from './handles';
 
@@ -53,7 +53,8 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
   const lastPointer = (): Point => pointer ?? { x: viewport.width / 2, y: viewport.height / 2 };
 
   const placeGhost = (screen: Point): Draft | null => {
-    const { placing, world } = useStore.getState();
+    const state = useStore.getState();
+    const { placing, world } = state;
     if (!placing) return null;
     const center = screenToWorld(screen.x, screen.y);
     const rect = clampToWorld(
@@ -65,7 +66,19 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
       },
       world,
     );
-    return propose('place', { id: placing.id, name: placing.name, ...rect });
+    return propose('place', {
+      id: placing.id,
+      name: placing.name,
+      ...rect,
+      owner: selfOwner(state),
+    });
+  };
+
+  // Only the creator gets handles and drag-to-move; anyone can still select a room to inspect it.
+  const editableSelection = (): Room | undefined => {
+    const state = useStore.getState();
+    const selected = state.selectedId ? state.rooms[state.selectedId] : undefined;
+    return selected && canEdit(state, selected) ? selected : undefined;
   };
 
   const cursorAt = (screen: Point): string => {
@@ -77,10 +90,13 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
     if (gesture.type === 'resize') return handleCursor(gesture.handle);
 
     const at = screenToWorld(screen.x, screen.y);
-    const selected = state.selectedId ? state.rooms[state.selectedId] : undefined;
+    const selected = editableSelection();
     const handle = selected ? hitHandle(selected, at, HANDLE_REACH / camera.zoom) : null;
     if (handle) return handleCursor(handle);
-    return roomAt(at, Object.values(state.rooms)) ? 'move' : 'grab';
+
+    const room = roomAt(at, Object.values(state.rooms));
+    if (!room) return 'grab';
+    return canEdit(state, room) ? 'move' : 'pointer';
   };
 
   const refreshCursor = () => {
@@ -120,13 +136,13 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
     }
 
     const at = screenToWorld(screen.x, screen.y);
-    const selected = state.selectedId ? state.rooms[state.selectedId] : undefined;
+    const selected = editableSelection();
     const handle = selected ? hitHandle(selected, at, HANDLE_REACH / camera.zoom) : null;
     const room = roomAt(at, Object.values(state.rooms));
 
     if (selected && handle) {
       gesture = { type: 'resize', origin: selected, handle };
-    } else if (room) {
+    } else if (room && canEdit(state, room)) {
       state.select(room.id);
       gesture = {
         type: 'move',
@@ -135,6 +151,10 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
         start: screen,
         active: false,
       };
+    } else if (room) {
+      // Someone else's room: a click selects it, and dragging pans the map instead.
+      state.select(room.id);
+      gesture = { type: 'pan' };
     } else {
       state.select(null);
       gesture = { type: 'pan' };

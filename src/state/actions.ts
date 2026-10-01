@@ -11,7 +11,7 @@ import type { RejectReason, RoomAck } from '../../shared/protocol';
 import type { Room } from '../../shared/types';
 import { saveName } from '../lib/session';
 import { socket } from '../net/socket';
-import { useStore } from './store';
+import { canEdit, useStore } from './store';
 
 function listNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? 'another room';
@@ -19,7 +19,7 @@ function listNames(names: string[]): string {
   return `${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }
 
-export function describeRejection(reason: RejectReason, conflicts: string[]): string {
+export function describeRejection(reason: RejectReason, conflicts: string[] = []): string {
   switch (reason) {
     case 'overlap': {
       const { rooms } = useStore.getState();
@@ -32,6 +32,8 @@ export function describeRejection(reason: RejectReason, conflicts: string[]): st
       return `Rooms must be between ${ROOM_MIN} and ${ROOM_MAX} on each side`;
     case 'name':
       return `Room names need 1 to ${ROOM_NAME_MAX} characters`;
+    case 'forbidden':
+      return 'Only the person who created a room can change it';
     case 'limit':
       return `This world already has ${MAX_ROOMS} rooms`;
     case 'missing':
@@ -48,8 +50,16 @@ function online(): boolean {
   return connection === 'online';
 }
 
-// Checked here for instant feedback; the server runs the same check and has the final say.
-function accept(room: Room): boolean {
+function owns(id: string): boolean {
+  const state = useStore.getState();
+  const room = state.rooms[id];
+  const allowed = room !== undefined && canEdit(state, room);
+  if (!allowed) state.toast(describeRejection('forbidden'));
+  return allowed;
+}
+
+// Checked here for instant feedback; the server runs the same checks and has the final say.
+function fits(room: Room): boolean {
   const { rooms, world, toast } = useStore.getState();
   const result = validateRoom(room, Object.values(rooms), world);
   if (!result.ok) toast(describeRejection(result.reason, result.conflicts));
@@ -68,23 +78,28 @@ function settle(attempted: Room, result: RoomAck): void {
 }
 
 export function createRoom(room: Room): boolean {
-  if (!online() || !accept(room)) return false;
+  if (!online() || !fits(room)) return false;
   useStore.getState().upsertRoom(room);
   socket.emit('room:create', room, (result) => settle(room, result));
   return true;
 }
 
 export function updateRoom(room: Room): boolean {
-  if (!online() || !accept(room)) return false;
+  if (!online() || !owns(room.id) || !fits(room)) return false;
   useStore.getState().upsertRoom(room);
   socket.emit('room:update', room, (result) => settle(room, result));
   return true;
 }
 
 export function deleteRoom(id: string): void {
-  if (!online()) return;
+  if (!online() || !owns(id)) return;
   useStore.getState().removeRoom(id);
-  socket.emit('room:delete', id, () => undefined);
+  socket.emit('room:delete', id, (result) => {
+    if (result.ok) return;
+    const { upsertRoom, toast } = useStore.getState();
+    if (result.room) upsertRoom(result.room);
+    toast(describeRejection(result.reason));
+  });
 }
 
 export function sendChat(text: string): void {

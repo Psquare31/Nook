@@ -3,7 +3,7 @@ import { GRID, ROOM_NAME_MAX } from '../../shared/constants';
 import { snap } from '../../shared/geometry';
 import type { Room } from '../../shared/types';
 import { deleteRoom, updateRoom } from '../state/actions';
-import { useStore } from '../state/store';
+import { canEdit, useStore } from '../state/store';
 
 type Fields = { name: string; x: string; y: string; width: string; height: string };
 
@@ -55,38 +55,66 @@ function InspectorForm({ room }: { room: Room }) {
   });
 
   return (
-    <aside className="panel panel-right">
-      <section className="card">
-        <h2>Room</h2>
+    <section className="card">
+      <h2>Your room</h2>
+      <label className="field">
+        <span>Name</span>
+        <input maxLength={ROOM_NAME_MAX} {...bind('name')} />
+      </label>
+      <div className="field-row">
         <label className="field">
-          <span>Name</span>
-          <input maxLength={ROOM_NAME_MAX} {...bind('name')} />
+          <span>X</span>
+          <input type="number" step={GRID} {...bind('x')} />
         </label>
-        <div className="field-row">
-          <label className="field">
-            <span>X</span>
-            <input type="number" step={GRID} {...bind('x')} />
-          </label>
-          <label className="field">
-            <span>Y</span>
-            <input type="number" step={GRID} {...bind('y')} />
-          </label>
-        </div>
-        <div className="field-row">
-          <label className="field">
-            <span>Width</span>
-            <input type="number" step={GRID} {...bind('width')} />
-          </label>
-          <label className="field">
-            <span>Height</span>
-            <input type="number" step={GRID} {...bind('height')} />
-          </label>
-        </div>
-        <button type="button" className="button danger" onClick={() => deleteRoom(room.id)}>
-          Delete room
-        </button>
-      </section>
-    </aside>
+        <label className="field">
+          <span>Y</span>
+          <input type="number" step={GRID} {...bind('y')} />
+        </label>
+      </div>
+      <div className="field-row">
+        <label className="field">
+          <span>Width</span>
+          <input type="number" step={GRID} {...bind('width')} />
+        </label>
+        <label className="field">
+          <span>Height</span>
+          <input type="number" step={GRID} {...bind('height')} />
+        </label>
+      </div>
+      <button type="button" className="button danger" onClick={() => deleteRoom(room.id)}>
+        Delete room
+      </button>
+    </section>
+  );
+}
+
+function LockedRoom({ room }: { room: Room }) {
+  return (
+    <section className="card">
+      <h2>{room.owner ? 'Room' : 'Built-in room'}</h2>
+      <p className="locked-name">{room.name}</p>
+      <dl className="facts">
+        <dt>Size</dt>
+        <dd>
+          {room.width} × {room.height}
+        </dd>
+        <dt>Position</dt>
+        <dd>
+          {room.x}, {room.y}
+        </dd>
+        {room.owner && (
+          <>
+            <dt>Created by</dt>
+            <dd>{room.owner.name}</dd>
+          </>
+        )}
+      </dl>
+      <p className="help locked-note">
+        {room.owner
+          ? 'Only the person who created a room can move, resize, rename or delete it.'
+          : 'Built-in rooms cannot be changed.'}
+      </p>
+    </section>
   );
 }
 
@@ -94,6 +122,12 @@ export function RoomInspector() {
   const room = useStore((state) =>
     state.selectedId ? state.rooms[state.selectedId] : undefined,
   );
+  const editable = useStore((state) => room !== undefined && canEdit(state, room));
   if (!room) return null;
-  return <InspectorForm key={room.id} room={room} />;
+
+  return (
+    <aside className="panel panel-right">
+      {editable ? <InspectorForm key={room.id} room={room} /> : <LockedRoom room={room} />}
+    </aside>
+  );
 }

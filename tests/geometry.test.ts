@@ -9,9 +9,9 @@ import {
   validateRoom,
   withinWorld,
 } from '../shared/geometry';
-import type { Room } from '../shared/types';
+import type { RoomShape } from '../shared/types';
 
-const room = (id: string, x: number, y: number, width = 200, height = 200): Room => ({
+const room = (id: string, x: number, y: number, width = 200, height = 200): RoomShape => ({
   id,
   name: id,
   x,

@@ -4,6 +4,7 @@ import type {
   ServerToClientEvents,
   Snapshot,
 } from '../../shared/protocol';
+import { loadUserKey } from '../lib/session';
 import { selfPlayer, useStore } from '../state/store';
 import {
   bubbles,
@@ -26,6 +27,8 @@ export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(url
 function roomName(roomId: string | null): string | undefined {
   return roomId ? useStore.getState().rooms[roomId]?.name : undefined;
 }
+
+const userKey = loadUserKey();
 
 // A tab with no saved position lets the server pick a free spot near the spawn.
 let placed = hasSavedPosition;
@@ -54,7 +57,7 @@ function applySnapshot(snapshot: Snapshot): void {
 socket.on('connect', () => {
   const { name } = useStore.getState();
   const position = placed ? { x: Math.round(self.x), y: Math.round(self.y) } : {};
-  socket.emit('join', { name, ...position }, applySnapshot);
+  socket.emit('join', { name, key: userKey, ...position }, applySnapshot);
 });
 
 socket.on('disconnect', () => useStore.getState().setConnection('offline'));

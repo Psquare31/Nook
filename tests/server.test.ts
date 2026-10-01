@@ -11,18 +11,21 @@ import type {
   ServerToClientEvents,
   Snapshot,
 } from '../shared/protocol';
-import type { Point, Room } from '../shared/types';
+import type { Point, RoomShape } from '../shared/types';
 
 type Client = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 const INSIDE_LOUNGE: Point = { x: 2000, y: 1500 };
 const INSIDE_WORKSHOP: Point = { x: 1400, y: 1400 };
 const OUTSIDE: Point = { x: 300, y: 300 };
-const FREE_ROOM: Room = { id: 'studio', name: 'Studio', x: 200, y: 200, width: 400, height: 250 };
+const STUDIO: RoomShape = { id: 'studio', name: 'Studio', x: 200, y: 200, width: 400, height: 250 };
+const WORKSHOP = STARTER_ROOMS[1];
 
 let nook: ReturnType<typeof createNook>;
 let url: string;
 let clients: Client[];
+
+const keyOf = (name: string) => `${name}-secret-key-0000`;
 
 async function start(options: Parameters<typeof createNook>[0] = {}) {
   nook = createNook(options);
@@ -35,12 +38,18 @@ async function stop() {
   await nook.io.close();
 }
 
-async function connect(name: string, position: Point = INSIDE_LOUNGE) {
+async function open(): Promise<Client> {
   const socket: Client = io(url, { transports: ['websocket'], forceNew: true });
   clients.push(socket);
   await new Promise<void>((resolve) => socket.once('connect', resolve));
-  const snapshot: Snapshot = await socket.emitWithAck('join', { name, ...position });
-  return { socket, snapshot };
+  return socket;
+}
+
+async function connect(name: string, position: Point = INSIDE_LOUNGE, key = keyOf(name)) {
+  const socket = await open();
+  const snapshot: Snapshot = await socket.emitWithAck('join', { name, key, ...position });
+  const me = snapshot.players.find((player) => player.id === socket.id)!;
+  return { socket, snapshot, me, owner: { id: me.userId, name: me.name } };
 }
 
 function next<E extends keyof ServerToClientEvents>(socket: Client, event: E) {
@@ -92,15 +101,13 @@ describe('joining', () => {
     const second = await connect('Ben');
     const [a, b] = second.snapshot.players;
 
-    expect(first.snapshot.players[0].name).toBe('Guest');
+    expect(first.me.name).toBe('Guest');
     expect(a.color).not.toBe(b.color);
   });
 
   it('spawns newcomers in the starting room without stacking them', async () => {
     for (let index = 0; index < 4; index++) {
-      const socket: Client = io(url, { transports: ['websocket'], forceNew: true });
-      clients.push(socket);
-      await new Promise<void>((resolve) => socket.once('connect', resolve));
+      const socket = await open();
       await socket.emitWithAck('join', { name: `Guest ${index}` });
     }
 
@@ -123,6 +130,37 @@ describe('joining', () => {
 
     expect(await left).toBe(benId);
     expect(nook.state.listPlayers()).toHaveLength(1);
+  });
+});
+
+describe('identity', () => {
+  it('gives connections that share a key the same user id', async () => {
+    const tab = await connect('Asha');
+    const otherTab = await connect('Asha again', INSIDE_LOUNGE, keyOf('Asha'));
+    const ben = await connect('Ben');
+
+    expect(otherTab.me.userId).toBe(tab.me.userId);
+    expect(ben.me.userId).not.toBe(tab.me.userId);
+  });
+
+  it('never sends the key back to anyone', async () => {
+    const asha = await connect('Asha');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+    const ben = await connect('Ben');
+
+    expect(asha.me.userId).not.toBe(keyOf('Asha'));
+    expect(JSON.stringify(ben.snapshot)).not.toContain(keyOf('Asha'));
+  });
+
+  it('gives a throwaway user id to a connection without a usable key', async () => {
+    const noKey = await open();
+    const shortKey = await open();
+    const first: Snapshot = await noKey.emitWithAck('join', { name: 'One' });
+    const second: Snapshot = await shortKey.emitWithAck('join', { name: 'Two', key: 'short' });
+    const ids = second.players.map((player) => player.userId);
+
+    expect(first.players[0].userId).toMatch(/^[0-9a-f]{16}$/);
+    expect(new Set(ids).size).toBe(2);
   });
 });
 
@@ -241,15 +279,16 @@ describe('chat', () => {
 });
 
 describe('room editing', () => {
-  it('creates a room and tells the other players', async () => {
+  it('creates a room owned by its creator and tells the other players', async () => {
     const asha = await connect('Asha');
     const ben = await connect('Ben');
     const created = next(ben.socket, 'room:created');
+    const expected = { ...STUDIO, owner: asha.owner };
 
-    const result = await asha.socket.emitWithAck('room:create', FREE_ROOM);
+    const result = await asha.socket.emitWithAck('room:create', STUDIO);
 
-    expect(result).toEqual({ ok: true, room: FREE_ROOM });
-    expect(await created).toEqual(FREE_ROOM);
+    expect(result).toEqual({ ok: true, room: expected });
+    expect(await created).toEqual(expected);
     expect(nook.state.listRooms()).toHaveLength(STARTER_ROOMS.length + 1);
   });
 
@@ -258,11 +297,7 @@ describe('room editing', () => {
     const ben = await connect('Ben');
     const created = collect(ben.socket, 'room:created');
 
-    const result = await asha.socket.emitWithAck('room:create', {
-      ...FREE_ROOM,
-      x: 1900,
-      y: 1400,
-    });
+    const result = await asha.socket.emitWithAck('room:create', { ...STUDIO, x: 1900, y: 1400 });
     await settle();
 
     expect(result).toEqual({ ok: false, reason: 'overlap', conflicts: ['lounge'], room: null });
@@ -273,55 +308,54 @@ describe('room editing', () => {
   it('rejects a room outside the world', async () => {
     const { socket } = await connect('Asha');
 
-    const result = await socket.emitWithAck('room:create', { ...FREE_ROOM, x: WORLD.width - 100 });
+    const result = await socket.emitWithAck('room:create', { ...STUDIO, x: WORLD.width - 100 });
 
     expect(result).toMatchObject({ ok: false, reason: 'bounds' });
   });
 
-  it('moves a room and tells the other players', async () => {
+  it('lets the creator move a room and tells the other players', async () => {
     const asha = await connect('Asha');
     const ben = await connect('Ben');
+    await asha.socket.emitWithAck('room:create', STUDIO);
     const updated = next(ben.socket, 'room:updated');
-    const moved = { ...STARTER_ROOMS[1], x: 600, y: 600 };
+    const moved = { ...STUDIO, x: 600, y: 600 };
 
     const result = await asha.socket.emitWithAck('room:update', moved);
 
-    expect(result).toEqual({ ok: true, room: moved });
-    expect(await updated).toEqual(moved);
+    expect(result).toEqual({ ok: true, room: { ...moved, owner: asha.owner } });
+    expect(await updated).toEqual({ ...moved, owner: asha.owner });
   });
 
   it('rejects a move into a neighbour and returns the room as it stands', async () => {
-    const { socket } = await connect('Asha');
-    const workshop = STARTER_ROOMS[1];
+    const asha = await connect('Asha');
+    await asha.socket.emitWithAck('room:create', STUDIO);
 
-    const result = await socket.emitWithAck('room:update', { ...workshop, x: 1500 });
+    const result = await asha.socket.emitWithAck('room:update', { ...STUDIO, x: 1900, y: 1400 });
 
-    expect(result).toEqual({ ok: false, reason: 'overlap', conflicts: ['lounge'], room: workshop });
-    expect(nook.state.listRooms()).toEqual(STARTER_ROOMS);
+    expect(result).toEqual({
+      ok: false,
+      reason: 'overlap',
+      conflicts: ['lounge'],
+      room: { ...STUDIO, owner: asha.owner },
+    });
   });
 
-  it('rejects a resize into a neighbour', async () => {
-    const { socket } = await connect('Asha');
-    const workshop = STARTER_ROOMS[1];
+  it('rejects a resize into a neighbour but allows sharing a wall', async () => {
+    const asha = await connect('Asha');
+    const beside = { ...STUDIO, x: WORKSHOP.x - 500, y: WORKSHOP.y };
+    await asha.socket.emitWithAck('room:create', beside);
 
-    const result = await socket.emitWithAck('room:update', { ...workshop, width: 600 });
+    const touching = await asha.socket.emitWithAck('room:update', { ...beside, width: 500 });
+    const overlapping = await asha.socket.emitWithAck('room:update', { ...beside, width: 510 });
 
-    expect(result).toMatchObject({ ok: false, reason: 'overlap', conflicts: ['lounge'] });
-  });
-
-  it('allows two rooms to share a wall', async () => {
-    const { socket } = await connect('Asha');
-    const workshop = STARTER_ROOMS[1];
-
-    const result = await socket.emitWithAck('room:update', { ...workshop, width: 500 });
-
-    expect(result).toMatchObject({ ok: true });
+    expect(touching).toMatchObject({ ok: true });
+    expect(overlapping).toMatchObject({ ok: false, reason: 'overlap', conflicts: ['workshop'] });
   });
 
   it('rejects an update for a room that no longer exists', async () => {
     const { socket } = await connect('Asha');
 
-    const result = await socket.emitWithAck('room:update', FREE_ROOM);
+    const result = await socket.emitWithAck('room:update', STUDIO);
 
     expect(result).toEqual({ ok: false, reason: 'missing', conflicts: [], room: null });
   });
@@ -331,54 +365,150 @@ describe('room editing', () => {
 
     const garbage = await socket.emitWithAck('room:create', { id: 'x', name: 5 } as never);
     const notANumber = await socket.emitWithAck('room:create', {
-      ...FREE_ROOM,
+      ...STUDIO,
       width: 'wide',
     } as never);
 
     expect(garbage).toMatchObject({ ok: false, reason: 'invalid' });
     expect(notANumber).toMatchObject({ ok: false, reason: 'invalid' });
-    expect(await socket.emitWithAck('room:create', FREE_ROOM)).toMatchObject({ ok: true });
+    expect(await socket.emitWithAck('room:create', STUDIO)).toMatchObject({ ok: true });
   });
 
-  it('deletes a room, tells the other players and moves its occupants outside', async () => {
-    const asha = await connect('Asha');
-    const ben = await connect('Ben');
-    const deleted = next(ben.socket, 'room:deleted');
+  it('puts standing players into a room created around them and out again when it is deleted', async () => {
+    const asha = await connect('Asha', OUTSIDE);
+    const ben = await connect('Ben', OUTSIDE);
     const changes = collect(ben.socket, 'player:room');
+    const deleted = next(ben.socket, 'room:deleted');
 
-    const result = await asha.socket.emitWithAck('room:delete', 'lounge');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+    await settle();
+    expect(changes.map((change) => change.roomId)).toEqual(['studio', 'studio']);
+
+    const result = await asha.socket.emitWithAck('room:delete', 'studio');
     await settle();
 
     expect(result).toEqual({ ok: true });
-    expect(await deleted).toBe('lounge');
-    expect(changes).toHaveLength(2);
-    expect(changes.every((change) => change.roomId === null)).toBe(true);
-  });
-
-  it('puts a standing player into a room created around them', async () => {
-    const asha = await connect('Asha', OUTSIDE);
-    const ben = await connect('Ben');
-    const entered = next(ben.socket, 'player:room');
-
-    await asha.socket.emitWithAck('room:create', FREE_ROOM);
-
-    expect(await entered).toEqual({ id: asha.socket.id, roomId: 'studio' });
+    expect(await deleted).toBe('studio');
+    expect(changes.map((change) => change.roomId)).toEqual(['studio', 'studio', null, null]);
   });
 
   it('ignores edits from a connection that has not joined', async () => {
-    const stranger: Client = io(url, { transports: ['websocket'], forceNew: true });
-    clients.push(stranger);
-    await new Promise<void>((resolve) => stranger.once('connect', resolve));
+    const stranger = await open();
 
-    stranger.emit('room:create', FREE_ROOM, () => undefined);
+    stranger.emit('room:create', STUDIO, () => undefined);
     await settle();
 
     expect(nook.state.listRooms()).toEqual(STARTER_ROOMS);
   });
 });
 
+describe('room ownership', () => {
+  it('stops other users from moving, resizing or renaming a room', async () => {
+    const asha = await connect('Asha');
+    const ben = await connect('Ben');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+    const updates = collect(asha.socket, 'room:updated');
+    const asCreated = { ...STUDIO, owner: asha.owner };
+
+    const moved = await ben.socket.emitWithAck('room:update', { ...STUDIO, x: 700 });
+    const renamed = await ben.socket.emitWithAck('room:update', { ...STUDIO, name: 'Mine now' });
+    await settle();
+
+    const refusal = { ok: false, reason: 'forbidden', conflicts: [], room: asCreated };
+    expect(moved).toEqual(refusal);
+    expect(renamed).toEqual(refusal);
+    expect(updates).toEqual([]);
+    expect(nook.state.listRooms()).toContainEqual(asCreated);
+  });
+
+  it('stops other users from deleting a room', async () => {
+    const asha = await connect('Asha');
+    const ben = await connect('Ben');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+    const deletions = collect(asha.socket, 'room:deleted');
+
+    const result = await ben.socket.emitWithAck('room:delete', 'studio');
+    await settle();
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'forbidden',
+      room: { ...STUDIO, owner: asha.owner },
+    });
+    expect(deletions).toEqual([]);
+    expect(nook.state.listRooms()).toHaveLength(STARTER_ROOMS.length + 1);
+  });
+
+  it('keeps built-in rooms locked for everyone', async () => {
+    const { socket } = await connect('Asha');
+
+    const moved = await socket.emitWithAck('room:update', { ...WORKSHOP, x: 600, y: 600 });
+    const deleted = await socket.emitWithAck('room:delete', 'workshop');
+
+    expect(moved).toMatchObject({ ok: false, reason: 'forbidden', room: WORKSHOP });
+    expect(deleted).toMatchObject({ ok: false, reason: 'forbidden', room: WORKSHOP });
+    expect(nook.state.listRooms()).toEqual(STARTER_ROOMS);
+  });
+
+  it('decides the owner itself and ignores one sent by the client', async () => {
+    const asha = await connect('Asha');
+    const ben = await connect('Ben');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+
+    const forged = { ...STUDIO, id: 'forged', y: 600, owner: asha.owner };
+    const created = await ben.socket.emitWithAck('room:create', forged);
+    const takeover = await ben.socket.emitWithAck('room:update', {
+      ...STUDIO,
+      x: 700,
+      owner: ben.owner,
+    } as RoomShape);
+
+    expect(created).toMatchObject({ ok: true, room: { id: 'forged', owner: ben.owner } });
+    expect(takeover).toMatchObject({ ok: false, reason: 'forbidden' });
+  });
+
+  it('does not let another user reuse the id of an existing room', async () => {
+    const asha = await connect('Asha');
+    const ben = await connect('Ben');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+
+    const sameShape = await ben.socket.emitWithAck('room:create', STUDIO);
+    const elsewhere = await ben.socket.emitWithAck('room:create', { ...STUDIO, x: 900, y: 900 });
+
+    expect(sameShape).toMatchObject({ ok: false, reason: 'exists' });
+    expect(elsewhere).toMatchObject({ ok: false, reason: 'exists' });
+    expect(nook.state.listRooms()).toContainEqual({ ...STUDIO, owner: asha.owner });
+  });
+
+  it('recognises the creator again after a reconnect, in any tab with the same key', async () => {
+    const asha = await connect('Asha');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+    asha.socket.disconnect();
+
+    const back = await connect('Asha', OUTSIDE);
+    const impostor = await connect('Asha', OUTSIDE, keyOf('someone else'));
+
+    const byImpostor = await impostor.socket.emitWithAck('room:update', { ...STUDIO, x: 700 });
+    const byOwner = await back.socket.emitWithAck('room:update', { ...STUDIO, x: 800 });
+
+    expect(byImpostor).toMatchObject({ ok: false, reason: 'forbidden' });
+    expect(byOwner).toMatchObject({ ok: true, room: { x: 800 } });
+  });
+
+  it('updates the creator shown on a room when the owner renames', async () => {
+    const asha = await connect('Asha');
+    const ben = await connect('Ben');
+    await asha.socket.emitWithAck('room:create', STUDIO);
+    const updated = next(ben.socket, 'room:updated');
+
+    asha.socket.emit('player:rename', 'Asha K');
+
+    expect(await updated).toEqual({ ...STUDIO, owner: { id: asha.owner.id, name: 'Asha K' } });
+  });
+});
+
 describe('persistence', () => {
-  it('saves rooms and loads them again after a restart', async () => {
+  it('saves rooms with their owners and loads them again after a restart', async () => {
     await stop();
     const directory = mkdtempSync(join(tmpdir(), 'nook-'));
     const dataFile = join(directory, 'world.json');
@@ -386,16 +516,20 @@ describe('persistence', () => {
     try {
       clients = [];
       await start({ dataFile });
-      const { socket } = await connect('Asha');
-      await socket.emitWithAck('room:create', FREE_ROOM);
-      await socket.emitWithAck('room:delete', 'library');
+      const asha = await connect('Asha');
+      await asha.socket.emitWithAck('room:create', STUDIO);
       nook.saver?.flush();
       await stop();
 
       clients = [];
       await start({ dataFile });
       const names = nook.state.listRooms().map((room) => room.name).sort();
-      expect(names).toEqual(['Lounge', 'Studio', 'Workshop']);
+      expect(names).toEqual(['Library', 'Lounge', 'Studio', 'Workshop']);
+
+      const ben = await connect('Ben');
+      const back = await connect('Asha');
+      expect(await ben.socket.emitWithAck('room:delete', 'studio')).toMatchObject({ ok: false });
+      expect(await back.socket.emitWithAck('room:delete', 'studio')).toEqual({ ok: true });
     } finally {
       await stop();
       rmSync(directory, { recursive: true, force: true });

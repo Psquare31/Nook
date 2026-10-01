@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import {
   MAX_ROOMS,
   PLAYER_COLORS,
@@ -7,13 +8,19 @@ import {
   WORLD,
 } from '../shared/constants';
 import { clamp, roomAt, validateRoom } from '../shared/geometry';
-import type { RejectReason, RoomAck } from '../shared/protocol';
-import type { Player, Point, Room } from '../shared/types';
+import type { DeleteAck, RejectReason, RoomAck } from '../shared/protocol';
+import type { Player, Point, Room, RoomOwner, RoomShape } from '../shared/types';
 
 export type RoomChange = { player: Player; previous: string | null };
 
+export type DeleteResult =
+  | { ok: true; removed: boolean }
+  | Extract<DeleteAck, { ok: false }>;
+
 const SPAWN_SCATTER = 240;
 const SPAWN_ATTEMPTS = 12;
+const KEY_MIN = 16;
+const KEY_MAX = 128;
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === 'object' && input !== null;
@@ -23,7 +30,7 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function parseRoom(input: unknown): Room | null {
+function parseShape(input: unknown): RoomShape | null {
   if (!isRecord(input)) return null;
   const { id, name, x, y, width, height } = input;
   if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null;
@@ -41,6 +48,12 @@ function parseRoom(input: unknown): Room | null {
   };
 }
 
+function parseOwner(input: unknown): RoomOwner | null {
+  if (!isRecord(input) || !isRecord(input.owner)) return null;
+  const { id, name } = input.owner;
+  return typeof id === 'string' && typeof name === 'string' ? { id, name } : null;
+}
+
 function parsePoint(input: unknown): Point | null {
   if (!isRecord(input) || !isFiniteNumber(input.x) || !isFiniteNumber(input.y)) return null;
   return {
@@ -54,7 +67,16 @@ function cleanName(input: unknown): string | null {
   return input.trim().replace(/\s+/g, ' ').slice(0, PLAYER_NAME_MAX) || null;
 }
 
-function sameRoom(a: Room, b: Room): boolean {
+// Everyone can see user ids on rooms and players, so they are a digest of the browser's
+// secret key: knowing someone's id is not enough to act as them.
+function publicUserId(key: unknown): string {
+  if (typeof key !== 'string' || key.length < KEY_MIN || key.length > KEY_MAX) {
+    return randomBytes(8).toString('hex');
+  }
+  return createHash('sha256').update(key).digest('hex').slice(0, 16);
+}
+
+function sameShape(a: RoomShape, b: RoomShape): boolean {
   return (
     a.name === b.name &&
     a.x === b.x &&
@@ -74,10 +96,13 @@ export class WorldState {
   private readonly players = new Map<string, Player>();
   private joined = 0;
 
-  // Rooms go through the same validation as live edits, so a hand-edited save file
-  // can never bring overlapping rooms into the world.
-  constructor(rooms: unknown[] = []) {
-    for (const room of rooms) this.createRoom(room);
+  // Saved rooms go through the same validation as live edits, so a hand-edited save
+  // file can never bring overlapping rooms into the world.
+  constructor(saved: unknown[] = []) {
+    for (const entry of saved) {
+      const shape = parseShape(entry);
+      if (shape) this.commit({ ...shape, owner: parseOwner(entry) }, null);
+    }
   }
 
   listRooms(): Room[] {
@@ -92,29 +117,36 @@ export class WorldState {
     return this.players.get(id);
   }
 
-  createRoom(input: unknown): RoomAck {
-    const room = parseRoom(input);
-    if (!room) return rejection('invalid');
+  createRoom(input: unknown, creator: RoomOwner): RoomAck {
+    const shape = parseShape(input);
+    if (!shape) return rejection('invalid');
 
-    const existing = this.rooms.get(room.id);
+    const existing = this.rooms.get(shape.id);
     if (existing) {
-      return sameRoom(existing, room) ? { ok: true, room: existing } : rejection('exists', existing);
+      const replayed = existing.owner?.id === creator.id && sameShape(existing, shape);
+      return replayed ? { ok: true, room: existing } : rejection('exists', existing);
     }
     if (this.rooms.size >= MAX_ROOMS) return rejection('limit');
-    return this.commit(room, null);
+    return this.commit({ ...shape, owner: creator }, null);
   }
 
-  updateRoom(input: unknown): RoomAck {
-    const room = parseRoom(input);
-    if (!room) return rejection('invalid');
+  updateRoom(input: unknown, userId: string): RoomAck {
+    const shape = parseShape(input);
+    if (!shape) return rejection('invalid');
 
-    const existing = this.rooms.get(room.id);
+    const existing = this.rooms.get(shape.id);
     if (!existing) return rejection('missing');
-    return this.commit(room, existing);
+    if (existing.owner?.id !== userId) return rejection('forbidden', existing);
+    return this.commit({ ...shape, owner: existing.owner }, existing);
   }
 
-  deleteRoom(id: unknown): boolean {
-    return typeof id === 'string' && this.rooms.delete(id);
+  deleteRoom(id: unknown, userId: string): DeleteResult {
+    const existing = typeof id === 'string' ? this.rooms.get(id) : undefined;
+    if (!existing) return { ok: true, removed: false };
+    if (existing.owner?.id !== userId) return { ok: false, reason: 'forbidden', room: existing };
+
+    this.rooms.delete(existing.id);
+    return { ok: true, removed: true };
   }
 
   addPlayer(id: string, request: unknown): Player {
@@ -122,6 +154,7 @@ export class WorldState {
     const position = parsePoint(fields) ?? this.spawnPoint();
     const player: Player = {
       id,
+      userId: publicUserId(fields.key),
       name: cleanName(fields.name) ?? 'Guest',
       color: this.players.get(id)?.color ?? PLAYER_COLORS[this.joined++ % PLAYER_COLORS.length],
       x: Math.round(position.x),
@@ -149,12 +182,22 @@ export class WorldState {
     return { player, previous };
   }
 
-  renamePlayer(id: string, input: unknown): Player | null {
+  // Returns the rooms whose "created by" label changed along with the name.
+  renamePlayer(id: string, input: unknown): { player: Player; rooms: Room[] } | null {
     const player = this.players.get(id);
     const name = cleanName(input);
     if (!player || !name) return null;
     player.name = name;
-    return player;
+
+    const relabelled: Room[] = [];
+    for (const room of this.rooms.values()) {
+      if (room.owner?.id === player.userId && room.owner.name !== name) {
+        const updated = { ...room, owner: { ...room.owner, name } };
+        this.rooms.set(room.id, updated);
+        relabelled.push(updated);
+      }
+    }
+    return { player, rooms: relabelled };
   }
 
   // Rooms can be created, moved or deleted underneath a standing player.

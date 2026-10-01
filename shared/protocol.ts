@@ -1,13 +1,24 @@
 import type { PlacementReason } from './geometry';
-import type { Player, Point, Room, World } from './types';
+import type { Player, Point, Room, RoomShape, World } from './types';
 
-export type RejectReason = PlacementReason | 'invalid' | 'exists' | 'missing' | 'limit';
+export type RejectReason =
+  | PlacementReason
+  | 'invalid'
+  | 'exists'
+  | 'missing'
+  | 'limit'
+  | 'forbidden';
 
+// A rejection carries the room as the server has it, so the client can put it back.
 export type RoomAck =
   | { ok: true; room: Room }
   | { ok: false; reason: RejectReason; conflicts: string[]; room: Room | null };
 
-export type JoinRequest = { name: string; x?: number; y?: number };
+export type DeleteAck = { ok: true } | { ok: false; reason: RejectReason; room: Room | null };
+
+// `key` is a secret kept by the browser. The server turns it into the public user id
+// that room ownership is checked against.
+export type JoinRequest = { name: string; key?: string; x?: number; y?: number };
 
 export type Snapshot = {
   selfId: string;
@@ -25,9 +36,9 @@ export type ChatMessage = {
 
 export interface ClientToServerEvents {
   join: (request: JoinRequest, ack: (snapshot: Snapshot) => void) => void;
-  'room:create': (room: Room, ack: (result: RoomAck) => void) => void;
-  'room:update': (room: Room, ack: (result: RoomAck) => void) => void;
-  'room:delete': (id: string, ack: (result: { ok: boolean }) => void) => void;
+  'room:create': (room: RoomShape, ack: (result: RoomAck) => void) => void;
+  'room:update': (room: RoomShape, ack: (result: RoomAck) => void) => void;
+  'room:delete': (id: string, ack: (result: DeleteAck) => void) => void;
   'player:move': (position: Point) => void;
   'player:rename': (name: string) => void;
   'chat:send': (text: string) => void;

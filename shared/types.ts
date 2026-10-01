@@ -1,3 +1,5 @@
+export type RoomOwner = { id: string; name: string };
+
 export type Room = {
   id: string;
   name: string;
@@ -5,7 +7,12 @@ export type Room = {
   y: number;
   width: number;
   height: number;
+  // null marks a built-in room that nobody may edit.
+  owner: RoomOwner | null;
 };
+
+// What a client may propose. The owner is always decided by the server.
+export type RoomShape = Omit<Room, 'owner'>;
 
 export type Rect = Pick<Room, 'x' | 'y' | 'width' | 'height'>;
 
@@ -15,6 +22,7 @@ export type World = { width: number; height: number };
 
 export type Player = {
   id: string;
+  userId: string;
   name: string;
   color: string;
   x: number;
