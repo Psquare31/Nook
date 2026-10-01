@@ -13,6 +13,17 @@ export const PLAYER_SPEED = 260;
 export const PLAYER_NAME_MAX = 20;
 export const CHAT_MAX = 300;
 
+export const PLAYER_COLORS = [
+  '#7c6cf2',
+  '#f2617a',
+  '#3ecf8e',
+  '#f5a524',
+  '#38bdf8',
+  '#e879f9',
+  '#fb7185',
+  '#a3e635',
+];
+
 export const SPAWN: Point = { x: 2000, y: 1500 };
 
 export const STARTER_ROOMS: Room[] = [

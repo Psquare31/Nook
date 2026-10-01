@@ -52,6 +52,12 @@ export function focusOn(point: Point): void {
   constrain();
 }
 
+export function follow(point: Point, dt: number): void {
+  const blend = 1 - Math.exp(-dt * 10);
+  camera.x += (point.x - viewport.width / (2 * camera.zoom) - camera.x) * blend;
+  camera.y += (point.y - viewport.height / (2 * camera.zoom) - camera.y) * blend;
+}
+
 export function panBy(dx: number, dy: number): void {
   camera.x -= dx / camera.zoom;
   camera.y -= dy / camera.zoom;

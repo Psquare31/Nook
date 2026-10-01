@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { attachEditor } from '../editor/interactions';
+import { attachMovement, stepMovement } from '../play/movement';
 import { useStore } from '../state/store';
-import { fitRooms, viewport } from './camera';
+import { self } from './avatars';
+import { centerOn, follow, viewport } from './camera';
 import { render } from './render';
 
 export function WorldCanvas() {
@@ -19,7 +21,7 @@ export function WorldCanvas() {
       canvas.width = Math.round(viewport.width * dpr);
       canvas.height = Math.round(viewport.height * dpr);
       if (!framed && viewport.width > 0) {
-        fitRooms(Object.values(useStore.getState().rooms));
+        centerOn(self);
         framed = true;
       }
     };
@@ -29,9 +31,16 @@ export function WorldCanvas() {
     resize();
 
     const detachEditor = attachEditor(canvas);
+    const detachMovement = attachMovement();
 
-    let frame = requestAnimationFrame(function tick() {
-      render(ctx);
+    let last = performance.now();
+    let frame = requestAnimationFrame(function tick(now) {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      stepMovement(dt);
+      if (useStore.getState().mode === 'play') follow(self, dt);
+      render(ctx, now);
       frame = requestAnimationFrame(tick);
     });
 
@@ -39,6 +48,7 @@ export function WorldCanvas() {
       cancelAnimationFrame(frame);
       observer.disconnect();
       detachEditor();
+      detachMovement();
     };
   }, []);
 

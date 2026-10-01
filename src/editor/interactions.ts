@@ -4,7 +4,7 @@ import type { Point, Room } from '../../shared/types';
 import { isTyping } from '../lib/dom';
 import { createRoom, deleteRoom, describeRejection, updateRoom } from '../state/actions';
 import { useStore, type Draft } from '../state/store';
-import { camera, panBy, screenToWorld, viewport, zoomAt } from '../world/camera';
+import { camera, panBy, screenToWorld, viewport, zoomAt, zoomBy } from '../world/camera';
 import { handleCursor, hitHandle, resizeRect, type Handle } from './handles';
 
 const DRAG_THRESHOLD = 4;
@@ -70,6 +70,7 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
 
   const cursorAt = (screen: Point): string => {
     const state = useStore.getState();
+    if (state.mode === 'play') return 'default';
     if (state.placing) return state.draft?.valid === false ? 'not-allowed' : 'copy';
     if (gesture.type === 'pan') return 'grabbing';
     if (gesture.type === 'move') return 'move';
@@ -95,6 +96,7 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
     const screen = toLocal(event);
     const state = useStore.getState();
     pointer = screen;
+    if (state.mode !== 'edit') return;
 
     if (event.button === 2) {
       if (state.placing) state.stopPlacing();
@@ -145,6 +147,7 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
     const previous = pointer ?? screen;
     pointer = screen;
     const state = useStore.getState();
+    if (state.mode !== 'edit') return;
 
     if (state.placing) {
       placeGhost(screen);
@@ -184,15 +187,20 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
   const onWheel = (event: WheelEvent) => {
     event.preventDefault();
     const screen = toLocal(event);
-    zoomAt(screen.x, screen.y, Math.exp(-event.deltaY * 0.0015));
-    if (useStore.getState().placing) placeGhost(screen);
+    const factor = Math.exp(-event.deltaY * 0.0015);
+    const { mode, placing } = useStore.getState();
+
+    // In play mode the camera follows the avatar, so zooming stays centred on it.
+    if (mode === 'play') zoomBy(factor);
+    else zoomAt(screen.x, screen.y, factor);
+    if (placing) placeGhost(screen);
   };
 
   const onContextMenu = (event: MouseEvent) => event.preventDefault();
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (isTyping(event.target)) return;
     const state = useStore.getState();
+    if (state.mode !== 'edit' || isTyping(event.target)) return;
 
     if (event.key === 'Escape') {
       if (state.placing) state.stopPlacing();
@@ -225,7 +233,8 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
 
   const unsubscribe = useStore.subscribe((state, previous) => {
     if (state.placing && state.placing !== previous.placing) placeGhost(lastPointer());
-    if (state.placing !== previous.placing) refreshCursor();
+    if (state.mode !== previous.mode) gesture = { type: 'idle' };
+    if (state.placing !== previous.placing || state.mode !== previous.mode) refreshCursor();
   });
 
   canvas.addEventListener('pointerdown', onPointerDown);

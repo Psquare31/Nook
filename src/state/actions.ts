@@ -1,7 +1,16 @@
-import { ROOM_MAX, ROOM_MIN, ROOM_NAME_MAX } from '../../shared/constants';
+import {
+  CHAT_MAX,
+  PLAYER_NAME_MAX,
+  ROOM_MAX,
+  ROOM_MIN,
+  ROOM_NAME_MAX,
+} from '../../shared/constants';
 import { validateRoom, type PlacementReason } from '../../shared/geometry';
 import type { Room } from '../../shared/types';
-import { useStore } from './store';
+import { newId } from '../lib/id';
+import { saveName } from '../lib/session';
+import { say } from '../world/avatars';
+import { selfPlayer, useStore } from './store';
 
 function listNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? 'another room';
@@ -46,4 +55,45 @@ export function updateRoom(room: Room): boolean {
 
 export function deleteRoom(id: string): void {
   useStore.getState().removeRoom(id);
+}
+
+export function enterRoom(roomId: string | null): void {
+  const state = useStore.getState();
+  const me = selfPlayer(state);
+  if (!me || me.roomId === roomId) return;
+
+  const left = me.roomId ? state.rooms[me.roomId]?.name : undefined;
+  const entered = roomId ? state.rooms[roomId]?.name : undefined;
+  state.upsertPlayer({ ...me, roomId });
+  state.pushChat({
+    kind: 'system',
+    id: newId(),
+    text: entered ? `You entered ${entered}` : `You left ${left ?? 'the room'}`,
+  });
+}
+
+export function sendChat(text: string): void {
+  const state = useStore.getState();
+  const me = selfPlayer(state);
+  const trimmed = text.trim().slice(0, CHAT_MAX);
+  if (!me || !trimmed) return;
+
+  state.pushChat({
+    kind: 'message',
+    id: newId(),
+    from: { id: me.id, name: me.name, color: me.color },
+    text: trimmed,
+  });
+  say(me.id, trimmed);
+}
+
+export function rename(name: string): boolean {
+  const state = useStore.getState();
+  const me = selfPlayer(state);
+  const cleaned = name.trim().replace(/\s+/g, ' ').slice(0, PLAYER_NAME_MAX);
+  if (!me || !cleaned) return false;
+
+  state.upsertPlayer({ ...me, name: cleaned });
+  saveName(cleaned);
+  return true;
 }

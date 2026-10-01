@@ -1,7 +1,9 @@
+import { PLAYER_RADIUS } from '../../shared/constants';
 import { roomsOverlap } from '../../shared/geometry';
 import type { Rect, Room, World } from '../../shared/types';
 import { HANDLES, handlePoint } from '../editor/handles';
-import { useStore, type Draft } from '../state/store';
+import { selfPlayer, useStore, type Draft } from '../state/store';
+import { bubbles, self } from './avatars';
 import { camera, viewport, visibleRect, worldToScreen } from './camera';
 
 const COLORS = {
@@ -16,10 +18,12 @@ const COLORS = {
   plate: 'rgba(22, 23, 34, 0.9)',
   plateText: '#f4f5fb',
   accent: '#8f81ff',
+  accentDeep: '#5b4bd6',
   valid: '#3ecf8e',
   validFill: 'rgba(62, 207, 142, 0.22)',
   invalid: '#f2617a',
   invalidFill: 'rgba(242, 97, 122, 0.34)',
+  ink: '#1b1d2a',
 };
 
 const TINTS = [
@@ -35,6 +39,8 @@ const TILE = 50;
 const WALL_BAND = 18;
 const BORDER = 6;
 const FONT = 'ui-sans-serif, system-ui, "Segoe UI", sans-serif';
+
+type Sprite = { id: string; name: string; color: string; x: number; y: number; isSelf: boolean };
 
 function hash(text: string): number {
   let value = 2166136261;
@@ -140,11 +146,12 @@ function strokeOutline(
   rect: Rect,
   color: string,
   zoom: number,
+  width = 2,
   dash: number[] = [],
 ): void {
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2 / zoom;
+  ctx.lineWidth = width / zoom;
   ctx.setLineDash(dash.map((length) => length / zoom));
   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
   ctx.restore();
@@ -172,7 +179,30 @@ function drawDraft(
 
   ctx.fillStyle = draft.valid ? COLORS.validFill : COLORS.invalidFill;
   ctx.fillRect(draft.room.x, draft.room.y, draft.room.width, draft.room.height);
-  strokeOutline(ctx, draft.room, draft.valid ? COLORS.valid : COLORS.invalid, zoom, [8, 6]);
+  strokeOutline(ctx, draft.room, draft.valid ? COLORS.valid : COLORS.invalid, zoom, 2, [8, 6]);
+}
+
+function drawAvatar(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
+  const { x, y } = sprite;
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + PLAYER_RADIUS * 0.95, PLAYER_RADIUS * 0.9, PLAYER_RADIUS * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = sprite.color;
+  ctx.beginPath();
+  ctx.arc(x, y, PLAYER_RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = sprite.isSelf ? '#ffffff' : COLORS.ink;
+  ctx.stroke();
+
+  ctx.fillStyle = COLORS.ink;
+  ctx.beginPath();
+  ctx.arc(x - 5, y - 3, 2.4, 0, Math.PI * 2);
+  ctx.arc(x + 5, y - 3, 2.4, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
@@ -182,24 +212,108 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number):
   return `${text.slice(0, end)}…`;
 }
 
-function drawNameplate(ctx: CanvasRenderingContext2D, room: Room, zoom: number): void {
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/\s+/)) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (!line || ctx.measureText(candidate).width <= maxWidth) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+    lines[maxLines - 1] += '…';
+  }
+  return lines.map((entry) => fitText(ctx, entry, maxWidth));
+}
+
+function drawPill(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  left: number,
+  top: number,
+  height: number,
+  background: string,
+): number {
+  const width = ctx.measureText(text).width + height - 6;
+  ctx.fillStyle = background;
+  ctx.beginPath();
+  ctx.roundRect(left, top, width, height, height / 2);
+  ctx.fill();
+
+  ctx.fillStyle = COLORS.plateText;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, left + (height - 6) / 2, top + height / 2 + 0.5);
+  return width;
+}
+
+function drawNameplate(
+  ctx: CanvasRenderingContext2D,
+  room: Room,
+  zoom: number,
+  occupants: number,
+): void {
   const width = room.width * zoom;
   if (width < 64 || room.height * zoom < 40) return;
 
   const origin = worldToScreen(room.x, room.y);
   ctx.font = `600 12px ${FONT}`;
-  const text = fitText(ctx, room.name, width - 36);
-  const plateWidth = ctx.measureText(text).width + 16;
+  const text = fitText(ctx, room.name, width - (occupants > 0 ? 76 : 36));
+  const plateWidth = drawPill(ctx, text, origin.x + 10, origin.y + 9, 22, COLORS.plate);
+  if (occupants > 0) {
+    drawPill(ctx, `● ${occupants}`, origin.x + 14 + plateWidth, origin.y + 9, 22, COLORS.accentDeep);
+  }
+}
 
-  ctx.fillStyle = COLORS.plate;
+function drawNameTag(ctx: CanvasRenderingContext2D, sprite: Sprite, zoom: number): void {
+  const at = worldToScreen(sprite.x, sprite.y);
+  ctx.font = `600 11px ${FONT}`;
+  const width = ctx.measureText(sprite.name).width + 12;
+  drawPill(
+    ctx,
+    sprite.name,
+    at.x - width / 2,
+    at.y + PLAYER_RADIUS * zoom + 6,
+    18,
+    sprite.isSelf ? COLORS.accentDeep : COLORS.plate,
+  );
+}
+
+function drawBubble(ctx: CanvasRenderingContext2D, sprite: Sprite, text: string, zoom: number): void {
+  const at = worldToScreen(sprite.x, sprite.y);
+  ctx.font = `500 13px ${FONT}`;
+  const lines = wrapText(ctx, text, 220, 3);
+  const width = Math.max(...lines.map((line) => ctx.measureText(line).width)) + 22;
+  const height = lines.length * 17 + 12;
+  const bottom = at.y - PLAYER_RADIUS * zoom - 12;
+  const top = bottom - height;
+
+  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
-  ctx.roundRect(origin.x + 10, origin.y + 9, plateWidth, 22, 11);
+  ctx.roundRect(at.x - width / 2, top, width, height, 10);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(at.x - 6, bottom - 1);
+  ctx.lineTo(at.x, bottom + 7);
+  ctx.lineTo(at.x + 6, bottom - 1);
   ctx.fill();
 
-  ctx.fillStyle = COLORS.plateText;
+  ctx.fillStyle = COLORS.ink;
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';
-  ctx.fillText(text, origin.x + 18, origin.y + 20.5);
+  lines.forEach((line, index) => ctx.fillText(line, at.x, top + 14.5 + index * 17));
 }
 
 function drawHandles(ctx: CanvasRenderingContext2D, rect: Rect): void {
@@ -234,8 +348,9 @@ function drawDimensions(ctx: CanvasRenderingContext2D, draft: Draft): void {
   ctx.fillText(text, center.x, center.y + 0.5);
 }
 
-export function render(ctx: CanvasRenderingContext2D): void {
-  const { rooms, world, draft, selectedId } = useStore.getState();
+export function render(ctx: CanvasRenderingContext2D, now: number): void {
+  const state = useStore.getState();
+  const { rooms, world, draft, selectedId, mode, players } = state;
   const dpr = window.devicePixelRatio || 1;
   const zoom = camera.zoom;
   const view = visibleRect();
@@ -250,6 +365,15 @@ export function render(ctx: CanvasRenderingContext2D): void {
       : rooms[selectedId]
     : undefined;
 
+  const me = selfPlayer(state);
+  const sprites: Sprite[] = me ? [{ ...me, x: self.x, y: self.y, isSelf: true }] : [];
+  const current = mode === 'play' && me?.roomId ? rooms[me.roomId] : undefined;
+
+  const occupancy: Record<string, number> = {};
+  for (const player of Object.values(players)) {
+    if (player.roomId) occupancy[player.roomId] = (occupancy[player.roomId] ?? 0) + 1;
+  }
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = COLORS.void;
   ctx.fillRect(0, 0, viewport.width, viewport.height);
@@ -258,12 +382,19 @@ export function render(ctx: CanvasRenderingContext2D): void {
   drawGround(ctx, world, view, zoom);
   for (const room of visible) drawShadow(ctx, room);
   for (const room of visible) drawRoom(ctx, room, view, zoom);
+  if (current) strokeOutline(ctx, current, COLORS.accent, zoom, 3);
   if (draft) drawDraft(ctx, draft, rooms, view, zoom);
   if (selected && selected !== draft?.room) strokeOutline(ctx, selected, COLORS.accent, zoom);
+  for (const sprite of sprites) drawAvatar(ctx, sprite);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  for (const room of visible) drawNameplate(ctx, room, zoom);
-  if (draft) drawNameplate(ctx, draft.room, zoom);
+  for (const room of visible) drawNameplate(ctx, room, zoom, occupancy[room.id] ?? 0);
+  if (draft) drawNameplate(ctx, draft.room, zoom, 0);
+  for (const sprite of sprites) drawNameTag(ctx, sprite, zoom);
+  for (const sprite of sprites) {
+    const bubble = bubbles.get(sprite.id);
+    if (bubble && bubble.until > now) drawBubble(ctx, sprite, bubble.text, zoom);
+  }
   if (selected) drawHandles(ctx, selected);
   if (draft) drawDimensions(ctx, draft);
 }
