@@ -8,6 +8,7 @@ import { selfPlayer, useStore } from '../state/store';
 import {
   bubbles,
   dropRemote,
+  hasSavedPosition,
   moveRemote,
   placeRemote,
   remotes,
@@ -26,9 +27,13 @@ function roomName(roomId: string | null): string | undefined {
   return roomId ? useStore.getState().rooms[roomId]?.name : undefined;
 }
 
+// A tab with no saved position lets the server pick a free spot near the spawn.
+let placed = hasSavedPosition;
+
 function applySnapshot(snapshot: Snapshot): void {
   const before = selfPlayer(useStore.getState());
   useStore.getState().applySnapshot(snapshot);
+  placed = true;
 
   remotes.clear();
   bubbles.clear();
@@ -48,7 +53,8 @@ function applySnapshot(snapshot: Snapshot): void {
 
 socket.on('connect', () => {
   const { name } = useStore.getState();
-  socket.emit('join', { name, x: Math.round(self.x), y: Math.round(self.y) }, applySnapshot);
+  const position = placed ? { x: Math.round(self.x), y: Math.round(self.y) } : {};
+  socket.emit('join', { name, ...position }, applySnapshot);
 });
 
 socket.on('disconnect', () => useStore.getState().setConnection('offline'));

@@ -366,16 +366,7 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
     : undefined;
 
   const me = selfPlayer(state);
-  const sprites: Sprite[] = [
-    {
-      id: state.selfId ?? 'self',
-      name: state.name,
-      color: me?.color ?? PLAYER_COLORS[0],
-      x: self.x,
-      y: self.y,
-      isSelf: true,
-    },
-  ];
+  const sprites: Sprite[] = [];
   for (const player of Object.values(players)) {
     const remote = remotes.get(player.id);
     if (remote && player.id !== state.selfId) {
@@ -383,6 +374,15 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
     }
   }
   sprites.sort((a, b) => a.y - b.y);
+  // Your own avatar is drawn last so nobody standing on the same spot can hide it.
+  sprites.push({
+    id: state.selfId ?? 'self',
+    name: state.name,
+    color: me?.color ?? PLAYER_COLORS[0],
+    x: self.x,
+    y: self.y,
+    isSelf: true,
+  });
   const current = mode === 'play' && me?.roomId ? rooms[me.roomId] : undefined;
 
   const occupancy: Record<string, number> = {};

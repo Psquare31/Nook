@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { io, type Socket } from 'socket.io-client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createNook } from '../server/app';
-import { STARTER_ROOMS, WORLD } from '../shared/constants';
+import { PLAYER_RADIUS, STARTER_ROOMS, WORLD } from '../shared/constants';
 import type {
   ClientToServerEvents,
   ServerToClientEvents,
@@ -94,6 +94,23 @@ describe('joining', () => {
 
     expect(first.snapshot.players[0].name).toBe('Guest');
     expect(a.color).not.toBe(b.color);
+  });
+
+  it('spawns newcomers in the starting room without stacking them', async () => {
+    for (let index = 0; index < 4; index++) {
+      const socket: Client = io(url, { transports: ['websocket'], forceNew: true });
+      clients.push(socket);
+      await new Promise<void>((resolve) => socket.once('connect', resolve));
+      await socket.emitWithAck('join', { name: `Guest ${index}` });
+    }
+
+    const players = nook.state.listPlayers();
+    expect(players.every((player) => player.roomId === 'lounge')).toBe(true);
+    for (const a of players) {
+      for (const b of players) {
+        if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(PLAYER_RADIUS * 2);
+      }
+    }
   });
 
   it('tells everyone when a player disconnects', async () => {

@@ -12,7 +12,8 @@ import type { Player, Point, Room } from '../shared/types';
 
 export type RoomChange = { player: Player; previous: string | null };
 
-const SPAWN_SCATTER = 60;
+const SPAWN_SCATTER = 240;
+const SPAWN_ATTEMPTS = 12;
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return typeof input === 'object' && input !== null;
@@ -118,10 +119,7 @@ export class WorldState {
 
   addPlayer(id: string, request: unknown): Player {
     const fields = isRecord(request) ? request : {};
-    const position = parsePoint(fields) ?? {
-      x: SPAWN.x + (Math.random() - 0.5) * SPAWN_SCATTER,
-      y: SPAWN.y + (Math.random() - 0.5) * SPAWN_SCATTER,
-    };
+    const position = parsePoint(fields) ?? this.spawnPoint();
     const player: Player = {
       id,
       name: cleanName(fields.name) ?? 'Guest',
@@ -168,6 +166,28 @@ export class WorldState {
       if (player.roomId !== previous) changes.push({ player, previous });
     }
     return changes;
+  }
+
+  // Tries a few spots around the spawn and keeps the one furthest from everyone else,
+  // so people who arrive together do not land on top of each other.
+  private spawnPoint(): Point {
+    let best = SPAWN;
+    let bestGap = -1;
+    for (let attempt = 0; attempt < SPAWN_ATTEMPTS; attempt++) {
+      const candidate = {
+        x: SPAWN.x + (Math.random() - 0.5) * SPAWN_SCATTER,
+        y: SPAWN.y + (Math.random() - 0.5) * SPAWN_SCATTER,
+      };
+      let gap = Infinity;
+      for (const player of this.players.values()) {
+        gap = Math.min(gap, Math.hypot(player.x - candidate.x, player.y - candidate.y));
+      }
+      if (gap > bestGap) {
+        best = candidate;
+        bestGap = gap;
+      }
+    }
+    return best;
   }
 
   private commit(room: Room, fallback: Room | null): RoomAck {

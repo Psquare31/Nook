@@ -34,7 +34,11 @@ export function attachMovement(): () => void {
   };
   const onKeyUp = (event: KeyboardEvent) => held.delete(event.code);
   const release = () => held.clear();
-  const persist = () => savePosition(self);
+  // Nothing is saved until the server has placed this player, otherwise a reload before
+  // the first snapshot would pin the tab to the default spawn point.
+  const persist = () => {
+    if (useStore.getState().selfId) savePosition(self);
+  };
 
   const unsubscribe = useStore.subscribe((state, previous) => {
     if (state.mode !== previous.mode) held.clear();

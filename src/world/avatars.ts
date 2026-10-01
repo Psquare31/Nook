@@ -6,8 +6,11 @@ type Remote = { x: number; y: number; targetX: number; targetY: number };
 
 const BUBBLE_MS = 4500;
 
+const saved = loadPosition();
+
 // Positions change every frame, so they live outside the store and are read by the renderer.
-export const self: Point = loadPosition() ?? { ...SPAWN };
+export const self: Point = saved ?? { ...SPAWN };
+export const hasSavedPosition = saved !== null;
 export const remotes = new Map<string, Remote>();
 export const bubbles = new Map<string, { text: string; until: number }>();
 
