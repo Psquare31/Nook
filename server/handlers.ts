@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server } from 'socket.io';
 import { CHAT_MAX } from '../shared/constants';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/protocol';
+import { grantVoice, type VoiceConfig } from './voice';
 import type { RoomChange, WorldState } from './world';
 
 export type NookServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -11,7 +12,12 @@ function channel(roomId: string | null): string {
   return roomId ? `room:${roomId}` : 'outside';
 }
 
-export function registerHandlers(io: NookServer, state: WorldState, saveRooms: () => void) {
+export function registerHandlers(
+  io: NookServer,
+  state: WorldState,
+  voice: VoiceConfig | null,
+  saveRooms: () => void,
+) {
   const switchChannel = ({ player, previous }: RoomChange) => {
     const socket = io.sockets.sockets.get(player.id);
     socket?.leave(channel(previous));
@@ -38,8 +44,20 @@ export function registerHandlers(io: NookServer, state: WorldState, saveRooms: (
         world: state.world,
         rooms: state.listRooms(),
         players: state.listPlayers(),
+        voice: voice !== null,
       });
       socket.broadcast.emit('player:joined', player);
+    });
+
+    // The channel is chosen from where the server has the player, never from the request,
+    // so a client cannot ask for the voice of a room it is not in.
+    socket.on('voice:token', (ack) => {
+      if (typeof ack !== 'function') return;
+      const player = state.getPlayer(socket.id);
+
+      if (!voice) ack({ ok: false, reason: 'disabled' });
+      else if (!player) ack({ ok: false, reason: 'not-joined' });
+      else ack(grantVoice(voice, player.roomId, player.voiceUid));
     });
 
     socket.on('room:create', (room, ack) => {

@@ -42,7 +42,15 @@ const WALL_BAND = 18;
 const BORDER = 6;
 const FONT = 'ui-sans-serif, system-ui, "Segoe UI", sans-serif';
 
-type Sprite = { id: string; name: string; color: string; x: number; y: number; isSelf: boolean };
+type Sprite = {
+  id: string;
+  name: string;
+  color: string;
+  x: number;
+  y: number;
+  isSelf: boolean;
+  speaking: boolean;
+};
 
 function hash(text: string): number {
   let value = 2166136261;
@@ -191,6 +199,14 @@ function drawAvatar(ctx: CanvasRenderingContext2D, sprite: Sprite): void {
   ctx.beginPath();
   ctx.ellipse(x, y + PLAYER_RADIUS * 0.95, PLAYER_RADIUS * 0.9, PLAYER_RADIUS * 0.38, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  if (sprite.speaking) {
+    ctx.strokeStyle = COLORS.valid;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, PLAYER_RADIUS + 6, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   ctx.fillStyle = sprite.color;
   ctx.beginPath();
@@ -369,11 +385,18 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
   const editable = selected !== undefined && canEdit(state, selected);
 
   const me = selfPlayer(state);
+  const speaking = new Set(state.voice.speaking);
   const sprites: Sprite[] = [];
   for (const player of Object.values(players)) {
     const remote = remotes.get(player.id);
     if (remote && player.id !== state.selfId) {
-      sprites.push({ ...player, x: remote.x, y: remote.y, isSelf: false });
+      sprites.push({
+        ...player,
+        x: remote.x,
+        y: remote.y,
+        isSelf: false,
+        speaking: speaking.has(player.id),
+      });
     }
   }
   sprites.sort((a, b) => a.y - b.y);
@@ -385,6 +408,7 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
     x: self.x,
     y: self.y,
     isSelf: true,
+    speaking: state.selfId !== null && speaking.has(state.selfId),
   });
   const current = mode === 'play' && me?.roomId ? rooms[me.roomId] : undefined;
 

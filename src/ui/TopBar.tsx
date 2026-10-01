@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PLAYER_NAME_MAX } from '../../shared/constants';
 import { rename } from '../state/actions';
 import { useStore, type Mode } from '../state/store';
+import { VoiceControl } from '../voice/VoiceControl';
 
 const MODES: { mode: Mode; label: string }[] = [
   { mode: 'play', label: 'Play' },
@@ -74,6 +75,7 @@ export function TopBar() {
         ))}
       </div>
       <div className="spacer" />
+      <VoiceControl />
       <Status />
       <NameField />
     </header>

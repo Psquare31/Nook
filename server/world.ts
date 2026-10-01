@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import {
   MAX_ROOMS,
   PLAYER_COLORS,
@@ -155,6 +155,7 @@ export class WorldState {
     const player: Player = {
       id,
       userId: publicUserId(fields.key),
+      voiceUid: this.players.get(id)?.voiceUid ?? this.freeVoiceUid(),
       name: cleanName(fields.name) ?? 'Guest',
       color: this.players.get(id)?.color ?? PLAYER_COLORS[this.joined++ % PLAYER_COLORS.length],
       x: Math.round(position.x),
@@ -209,6 +210,15 @@ export class WorldState {
       if (player.roomId !== previous) changes.push({ player, previous });
     }
     return changes;
+  }
+
+  // Two people with the same number in one voice channel would knock each other out.
+  private freeVoiceUid(): number {
+    for (;;) {
+      const uid = randomInt(1, 2 ** 31);
+      const taken = [...this.players.values()].some((player) => player.voiceUid === uid);
+      if (!taken) return uid;
+    }
   }
 
   // Tries a few spots around the spawn and keeps the one furthest from everyone else,

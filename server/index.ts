@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createNook } from './app';
+import { readVoiceConfig } from './voice';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
@@ -12,13 +13,15 @@ const origins = (process.env.CLIENT_ORIGIN ?? '')
   .map((origin) => origin.trim())
   .filter(Boolean);
 const dataFile = resolve(process.env.DATA_DIR || 'data', 'world.json');
+const voice = readVoiceConfig(process.env);
 
-const { httpServer, saver, state } = createNook({ dataFile, origins });
+const { httpServer, saver, state } = createNook({ dataFile, origins, voice });
 
 httpServer.listen(port, host, () => {
   console.log(`Nook server on http://${host}:${port}`);
   console.log(`  rooms: ${state.listRooms().length}, saved in ${dataFile}`);
   console.log(`  allowed origins: ${origins.length > 0 ? origins.join(', ') : 'any'}`);
+  console.log(`  voice chat: ${voice ? 'on' : 'off (no Agora credentials)'}`);
 });
 
 function shutdown() {

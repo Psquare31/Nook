@@ -23,6 +23,8 @@ export type World = { width: number; height: number };
 export type Player = {
   id: string;
   userId: string;
+  // The number this connection uses in the voice service, so clients can tell who is talking.
+  voiceUid: number;
   name: string;
   color: string;
   x: number;

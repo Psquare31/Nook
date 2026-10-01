@@ -544,3 +544,59 @@ ul {
 .zoom-controls button:hover {
   background: var(--surface-hover);
 }
+
+.voice-group {
+  display: flex;
+  gap: 6px;
+}
+
+.voice-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.voice-button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.voice-button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.voice-button.live {
+  background: rgba(62, 207, 142, 0.18);
+  color: var(--ok);
+}
+
+.voice-button.muted {
+  background: rgba(242, 97, 122, 0.16);
+  color: var(--danger);
+}
+
+.mic-icon {
+  flex: none;
+}
+
+.in-voice {
+  display: flex;
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.people li.speaking .in-voice {
+  color: var(--ok);
+}
+
+.people li.speaking .dot {
+  box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.45);
+}

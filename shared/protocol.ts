@@ -25,7 +25,15 @@ export type Snapshot = {
   world: World;
   rooms: Room[];
   players: Player[];
+  // Whether the server has voice credentials and can hand out voice tokens.
+  voice: boolean;
 };
+
+// Everything a client needs to join the voice channel of the room it is standing in.
+// The token only works for that one channel and that one uid.
+export type VoiceGrant =
+  | { ok: true; appId: string; channel: string; token: string; uid: number; roomId: string | null }
+  | { ok: false; reason: 'disabled' | 'not-joined' };
 
 export type ChatMessage = {
   id: string;
@@ -42,6 +50,7 @@ export interface ClientToServerEvents {
   'player:move': (position: Point) => void;
   'player:rename': (name: string) => void;
   'chat:send': (text: string) => void;
+  'voice:token': (ack: (grant: VoiceGrant) => void) => void;
 }
 
 export interface ServerToClientEvents {

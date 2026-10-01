@@ -28,6 +28,16 @@ export type ChatLine =
 
 export type Toast = { id: number; text: string };
 
+export type VoiceState = {
+  available: boolean;
+  status: 'off' | 'connecting' | 'on';
+  muted: boolean;
+  hasMic: boolean;
+  // Ids of the players in the same voice channel, and of those talking right now.
+  members: string[];
+  speaking: string[];
+};
+
 type State = {
   mode: Mode;
   connection: Connection;
@@ -41,6 +51,7 @@ type State = {
   placing: Placing | null;
   draft: Draft | null;
   toasts: Toast[];
+  voice: VoiceState;
   setMode: (mode: Mode) => void;
   setConnection: (connection: Connection) => void;
   applySnapshot: (snapshot: Snapshot) => void;
@@ -54,6 +65,7 @@ type State = {
   upsertPlayer: (player: PlayerInfo) => void;
   patchPlayer: (id: string, patch: Partial<PlayerInfo>) => void;
   removePlayer: (id: string) => void;
+  setVoice: (patch: Partial<VoiceState>) => void;
   pushChat: (line: ChatLine) => void;
   notice: (text: string) => void;
   toast: (text: string) => void;
@@ -64,8 +76,8 @@ const TOAST_MS = 3200;
 const CHAT_HISTORY = 200;
 let toastId = 0;
 
-function toInfo({ id, userId, name, color, roomId }: Player): PlayerInfo {
-  return { id, userId, name, color, roomId };
+function toInfo({ x: _x, y: _y, ...info }: Player): PlayerInfo {
+  return info;
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -81,6 +93,7 @@ export const useStore = create<State>((set, get) => ({
   placing: null,
   draft: null,
   toasts: [],
+  voice: { available: false, status: 'off', muted: false, hasMic: false, members: [], speaking: [] },
 
   setMode: (mode) => set({ mode, placing: null, draft: null, selectedId: null }),
 
@@ -96,6 +109,7 @@ export const useStore = create<State>((set, get) => ({
         selfId: snapshot.selfId,
         players: Object.fromEntries(snapshot.players.map((player) => [player.id, toInfo(player)])),
         selectedId: state.selectedId && rooms[state.selectedId] ? state.selectedId : null,
+        voice: { ...state.voice, available: snapshot.voice },
       };
     }),
 
@@ -132,6 +146,8 @@ export const useStore = create<State>((set, get) => ({
       const { [id]: _removed, ...players } = state.players;
       return { players };
     }),
+
+  setVoice: (patch) => set((state) => ({ voice: { ...state.voice, ...patch } })),
 
   pushChat: (line) => set((state) => ({ chat: [...state.chat.slice(-(CHAT_HISTORY - 1)), line] })),
 

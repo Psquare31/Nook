@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { io, type Socket } from 'socket.io-client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createNook } from '../server/app';
+import { readVoiceConfig, voiceChannel } from '../server/voice';
 import { PLAYER_RADIUS, STARTER_ROOMS, WORLD } from '../shared/constants';
 import type {
   ClientToServerEvents,
@@ -504,6 +505,103 @@ describe('room ownership', () => {
     asha.socket.emit('player:rename', 'Asha K');
 
     expect(await updated).toEqual({ ...STUDIO, owner: { id: asha.owner.id, name: 'Asha K' } });
+  });
+});
+
+describe('voice', () => {
+  const credentials = { appId: '0123456789abcdef0123456789abcdef', certificate: 'f'.repeat(32) };
+
+  it('reports voice as off and issues nothing without credentials', async () => {
+    const { socket, snapshot } = await connect('Asha');
+
+    expect(snapshot.voice).toBe(false);
+    expect(await socket.emitWithAck('voice:token')).toEqual({ ok: false, reason: 'disabled' });
+  });
+
+  describe('with credentials', () => {
+    beforeEach(async () => {
+      await stop();
+      clients = [];
+      await start({ voice: credentials });
+    });
+
+    it('issues a token for the channel of the room the player stands in', async () => {
+      const { socket, snapshot, me } = await connect('Asha');
+
+      const grant = await socket.emitWithAck('voice:token');
+
+      expect(snapshot.voice).toBe(true);
+      expect(grant).toMatchObject({
+        ok: true,
+        appId: credentials.appId,
+        channel: voiceChannel('lounge'),
+        uid: me.voiceUid,
+        roomId: 'lounge',
+      });
+      expect(grant.ok && grant.token.startsWith('007')).toBe(true);
+    });
+
+    it('never puts the certificate in what it sends', async () => {
+      const { socket, snapshot } = await connect('Asha');
+
+      const grant = await socket.emitWithAck('voice:token');
+
+      expect(JSON.stringify([snapshot, grant])).not.toContain(credentials.certificate);
+    });
+
+    it('puts people in the same room on one channel with different uids', async () => {
+      const asha = await connect('Asha');
+      const ben = await connect('Ben');
+
+      const first = await asha.socket.emitWithAck('voice:token');
+      const second = await ben.socket.emitWithAck('voice:token');
+
+      expect(first.ok && second.ok && first.channel === second.channel).toBe(true);
+      expect(asha.me.voiceUid).not.toBe(ben.me.voiceUid);
+    });
+
+    it('follows the player into another room and outside', async () => {
+      const asha = await connect('Asha');
+      const ben = await connect('Ben');
+      const moved = collect(ben.socket, 'player:room');
+
+      asha.socket.emit('player:move', INSIDE_WORKSHOP);
+      await settle();
+      const inWorkshop = await asha.socket.emitWithAck('voice:token');
+      asha.socket.emit('player:move', OUTSIDE);
+      await settle();
+      const outside = await asha.socket.emitWithAck('voice:token');
+
+      expect(moved).toHaveLength(2);
+      expect(inWorkshop).toMatchObject({ channel: voiceChannel('workshop'), roomId: 'workshop' });
+      expect(outside).toMatchObject({ channel: 'outside', roomId: null });
+    });
+
+    it('refuses a connection that has not joined', async () => {
+      const stranger = await open();
+
+      expect(await stranger.emitWithAck('voice:token')).toEqual({ ok: false, reason: 'not-joined' });
+    });
+  });
+
+  it('gives every room its own channel name whatever its id contains', () => {
+    const names = ['lounge', 'workshop', 'a room/with spaces & émojis 🎧', 'outside'].map(voiceChannel);
+
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.every((name) => /^room-[0-9a-f]{32}$/.test(name))).toBe(true);
+    expect(voiceChannel(null)).toBe('outside');
+  });
+
+  it('only turns voice on when both credentials look right', () => {
+    expect(readVoiceConfig({})).toBeNull();
+    expect(readVoiceConfig({ AGORA_APP_ID: credentials.appId })).toBeNull();
+    expect(readVoiceConfig({ AGORA_APP_ID: 'nope', AGORA_APP_CERTIFICATE: 'nope' })).toBeNull();
+    expect(
+      readVoiceConfig({
+        AGORA_APP_ID: ` ${credentials.appId} `,
+        AGORA_APP_CERTIFICATE: credentials.certificate,
+      }),
+    ).toEqual(credentials);
   });
 });
 
