@@ -1,3 +1,6 @@
+import { WorldCanvas } from './world/WorldCanvas';
+import { ZoomControls } from './world/ZoomControls';
+
 export function App() {
   return (
     <div className="app">
@@ -7,7 +10,10 @@ export function App() {
           Nook
         </div>
       </header>
-      <main className="stage" />
+      <main className="stage">
+        <WorldCanvas />
+        <ZoomControls />
+      </main>
     </div>
   );
 }
