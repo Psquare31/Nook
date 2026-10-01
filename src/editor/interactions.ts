@@ -213,7 +213,7 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
     const selected = state.selectedId ? state.rooms[state.selectedId] : undefined;
     if (!selected || state.placing || gesture.type !== 'idle') return;
 
-    if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (event.key === 'Delete') {
       event.preventDefault();
       deleteRoom(selected.id);
       return;
@@ -244,6 +244,7 @@ export function attachEditor(canvas: HTMLCanvasElement): () => void {
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('keydown', onKeyDown);
+  refreshCursor();
 
   return () => {
     unsubscribe();
