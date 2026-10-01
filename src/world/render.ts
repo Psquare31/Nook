@@ -1,9 +1,9 @@
-import { PLAYER_RADIUS } from '../../shared/constants';
+import { PLAYER_COLORS, PLAYER_RADIUS } from '../../shared/constants';
 import { roomsOverlap } from '../../shared/geometry';
 import type { Rect, Room, World } from '../../shared/types';
 import { HANDLES, handlePoint } from '../editor/handles';
 import { selfPlayer, useStore, type Draft } from '../state/store';
-import { bubbles, self } from './avatars';
+import { bubbles, remotes, self } from './avatars';
 import { camera, viewport, visibleRect, worldToScreen } from './camera';
 
 const COLORS = {
@@ -366,7 +366,23 @@ export function render(ctx: CanvasRenderingContext2D, now: number): void {
     : undefined;
 
   const me = selfPlayer(state);
-  const sprites: Sprite[] = me ? [{ ...me, x: self.x, y: self.y, isSelf: true }] : [];
+  const sprites: Sprite[] = [
+    {
+      id: state.selfId ?? 'self',
+      name: state.name,
+      color: me?.color ?? PLAYER_COLORS[0],
+      x: self.x,
+      y: self.y,
+      isSelf: true,
+    },
+  ];
+  for (const player of Object.values(players)) {
+    const remote = remotes.get(player.id);
+    if (remote && player.id !== state.selfId) {
+      sprites.push({ ...player, x: remote.x, y: remote.y, isSelf: false });
+    }
+  }
+  sprites.sort((a, b) => a.y - b.y);
   const current = mode === 'play' && me?.roomId ? rooms[me.roomId] : undefined;
 
   const occupancy: Record<string, number> = {};

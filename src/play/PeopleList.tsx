@@ -5,8 +5,9 @@ export function PeopleList() {
   const players = useStore((state) => state.players);
   const selfId = useStore((state) => state.selfId);
   const rooms = useStore((state) => state.rooms);
+  const connected = useStore((state) => state.connection === 'online');
 
-  const roomId = players[selfId]?.roomId ?? null;
+  const roomId = (selfId && players[selfId]?.roomId) || null;
   const here = useMemo(
     () =>
       Object.values(players)
@@ -31,7 +32,9 @@ export function PeopleList() {
           </li>
         ))}
       </ul>
-      <p className="help">{online} online in this world</p>
+      <p className="help">
+        {connected ? `${online} online in this world` : 'Not connected to the server'}
+      </p>
     </section>
   );
 }

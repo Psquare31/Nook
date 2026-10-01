@@ -1,15 +1,34 @@
 import { useEffect, useState } from 'react';
 import { PLAYER_NAME_MAX } from '../../shared/constants';
 import { rename } from '../state/actions';
-import { selfPlayer, useStore, type Mode } from '../state/store';
+import { useStore, type Mode } from '../state/store';
 
 const MODES: { mode: Mode; label: string }[] = [
   { mode: 'play', label: 'Play' },
   { mode: 'edit', label: 'Edit world' },
 ];
 
+function Status() {
+  const connection = useStore((state) => state.connection);
+  const online = useStore((state) => Object.keys(state.players).length);
+
+  const label =
+    connection === 'online'
+      ? `${online} online`
+      : connection === 'connecting'
+        ? 'Connecting…'
+        : 'Offline · retrying';
+
+  return (
+    <span className={`status ${connection}`}>
+      <span className="status-dot" />
+      {label}
+    </span>
+  );
+}
+
 function NameField() {
-  const name = useStore((state) => selfPlayer(state)?.name ?? '');
+  const name = useStore((state) => state.name);
   const [value, setValue] = useState(name);
 
   useEffect(() => setValue(name), [name]);
@@ -55,6 +74,7 @@ export function TopBar() {
         ))}
       </div>
       <div className="spacer" />
+      <Status />
       <NameField />
     </header>
   );

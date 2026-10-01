@@ -1,9 +1,9 @@
 import { PLAYER_RADIUS, PLAYER_SPEED } from '../../shared/constants';
-import { clamp, roomAt } from '../../shared/geometry';
+import { clamp } from '../../shared/geometry';
 import type { Point } from '../../shared/types';
 import { isTyping } from '../lib/dom';
 import { savePosition } from '../lib/session';
-import { enterRoom } from '../state/actions';
+import { socket } from '../net/socket';
 import { useStore } from '../state/store';
 import { self } from '../world/avatars';
 
@@ -18,7 +18,11 @@ const DIRECTIONS: Record<string, Point> = {
   ArrowRight: { x: 1, y: 0 },
 };
 
+const SEND_INTERVAL_MS = 50;
+
 const held = new Set<string>();
+let unsent = false;
+let lastSent = 0;
 
 export function attachMovement(): () => void {
   const onKeyDown = (event: KeyboardEvent) => {
@@ -53,8 +57,8 @@ export function attachMovement(): () => void {
   };
 }
 
-export function stepMovement(dt: number): void {
-  const { world, rooms } = useStore.getState();
+export function stepMovement(dt: number, now: number): void {
+  const { world } = useStore.getState();
 
   let dx = 0;
   let dy = 0;
@@ -67,7 +71,14 @@ export function stepMovement(dt: number): void {
     const distance = (PLAYER_SPEED * dt) / Math.hypot(dx, dy);
     self.x = clamp(self.x + dx * distance, PLAYER_RADIUS, world.width - PLAYER_RADIUS);
     self.y = clamp(self.y + dy * distance, PLAYER_RADIUS, world.height - PLAYER_RADIUS);
+    unsent = true;
   }
 
-  enterRoom(roomAt(self, Object.values(rooms))?.id ?? null);
+  // Throttled, and the flag stays set until a send goes out, so the final resting
+  // position is always delivered after the keys are released.
+  if (unsent && socket.connected && now - lastSent >= SEND_INTERVAL_MS) {
+    socket.emit('player:move', { x: Math.round(self.x), y: Math.round(self.y) });
+    lastSent = now;
+    unsent = false;
+  }
 }

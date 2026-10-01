@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { attachEditor } from '../editor/interactions';
 import { attachMovement, stepMovement } from '../play/movement';
 import { useStore } from '../state/store';
-import { self } from './avatars';
+import { self, stepRemotes } from './avatars';
 import { centerOn, follow, viewport } from './camera';
 import { render } from './render';
 
@@ -38,7 +38,8 @@ export function WorldCanvas() {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      stepMovement(dt);
+      stepMovement(dt, now);
+      stepRemotes(dt);
       if (useStore.getState().mode === 'play') follow(self, dt);
       render(ctx, now);
       frame = requestAnimationFrame(tick);

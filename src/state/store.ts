@@ -1,10 +1,14 @@
 import { create } from 'zustand';
-import { PLAYER_COLORS, STARTER_ROOMS, WORLD } from '../../shared/constants';
+import { WORLD } from '../../shared/constants';
 import type { PlacementReason } from '../../shared/geometry';
+import type { Snapshot } from '../../shared/protocol';
 import type { Player, Room, World } from '../../shared/types';
+import { newId } from '../lib/id';
 import { loadName } from '../lib/session';
 
 export type Mode = 'play' | 'edit';
+
+export type Connection = 'connecting' | 'online' | 'offline';
 
 export type Draft = {
   kind: 'place' | 'move' | 'resize';
@@ -26,9 +30,11 @@ export type Toast = { id: number; text: string };
 
 type State = {
   mode: Mode;
+  connection: Connection;
   world: World;
   rooms: Record<string, Room>;
-  selfId: string;
+  selfId: string | null;
+  name: string;
   players: Record<string, PlayerInfo>;
   chat: ChatLine[];
   selectedId: string | null;
@@ -36,6 +42,9 @@ type State = {
   draft: Draft | null;
   toasts: Toast[];
   setMode: (mode: Mode) => void;
+  setConnection: (connection: Connection) => void;
+  applySnapshot: (snapshot: Snapshot) => void;
+  setName: (name: string) => void;
   select: (id: string | null) => void;
   startPlacing: (placing: Placing) => void;
   stopPlacing: (selectId?: string) => void;
@@ -43,24 +52,30 @@ type State = {
   upsertRoom: (room: Room) => void;
   removeRoom: (id: string) => void;
   upsertPlayer: (player: PlayerInfo) => void;
+  patchPlayer: (id: string, patch: Partial<PlayerInfo>) => void;
+  removePlayer: (id: string) => void;
   pushChat: (line: ChatLine) => void;
+  notice: (text: string) => void;
   toast: (text: string) => void;
   dismissToast: (id: number) => void;
 };
 
 const TOAST_MS = 3200;
 const CHAT_HISTORY = 200;
-const LOCAL_ID = 'local';
 let toastId = 0;
+
+function toInfo({ id, name, color, roomId }: Player): PlayerInfo {
+  return { id, name, color, roomId };
+}
 
 export const useStore = create<State>((set, get) => ({
   mode: 'play',
+  connection: 'connecting',
   world: WORLD,
-  rooms: Object.fromEntries(STARTER_ROOMS.map((room) => [room.id, room])),
-  selfId: LOCAL_ID,
-  players: {
-    [LOCAL_ID]: { id: LOCAL_ID, name: loadName(), color: PLAYER_COLORS[0], roomId: null },
-  },
+  rooms: {},
+  selfId: null,
+  name: loadName(),
+  players: {},
   chat: [],
   selectedId: null,
   placing: null,
@@ -68,6 +83,23 @@ export const useStore = create<State>((set, get) => ({
   toasts: [],
 
   setMode: (mode) => set({ mode, placing: null, draft: null, selectedId: null }),
+
+  setConnection: (connection) => set({ connection }),
+
+  applySnapshot: (snapshot) =>
+    set((state) => {
+      const rooms = Object.fromEntries(snapshot.rooms.map((room) => [room.id, room]));
+      return {
+        connection: 'online',
+        world: snapshot.world,
+        rooms,
+        selfId: snapshot.selfId,
+        players: Object.fromEntries(snapshot.players.map((player) => [player.id, toInfo(player)])),
+        selectedId: state.selectedId && rooms[state.selectedId] ? state.selectedId : null,
+      };
+    }),
+
+  setName: (name) => set({ name }),
 
   select: (id) => set({ selectedId: id }),
 
@@ -89,7 +121,21 @@ export const useStore = create<State>((set, get) => ({
   upsertPlayer: (player) =>
     set((state) => ({ players: { ...state.players, [player.id]: player } })),
 
+  patchPlayer: (id, patch) =>
+    set((state) => {
+      const player = state.players[id];
+      return player ? { players: { ...state.players, [id]: { ...player, ...patch } } } : state;
+    }),
+
+  removePlayer: (id) =>
+    set((state) => {
+      const { [id]: _removed, ...players } = state.players;
+      return { players };
+    }),
+
   pushChat: (line) => set((state) => ({ chat: [...state.chat.slice(-(CHAT_HISTORY - 1)), line] })),
+
+  notice: (text) => get().pushChat({ kind: 'system', id: newId(), text }),
 
   toast: (text) => {
     const last = get().toasts.at(-1);
@@ -103,5 +149,5 @@ export const useStore = create<State>((set, get) => ({
 }));
 
 export function selfPlayer(state: State): PlayerInfo | undefined {
-  return state.players[state.selfId];
+  return state.selfId ? state.players[state.selfId] : undefined;
 }

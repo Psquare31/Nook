@@ -119,6 +119,37 @@ ul {
   color: #ffffff;
 }
 
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border-radius: 999px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f5a524;
+}
+
+.status.online {
+  color: var(--text);
+}
+
+.status.online .status-dot {
+  background: var(--ok);
+}
+
+.status.offline .status-dot {
+  background: var(--danger);
+}
+
 .name-field {
   display: flex;
   align-items: center;
