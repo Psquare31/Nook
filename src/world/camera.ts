@@ -33,9 +33,22 @@ function constrain(): void {
   camera.y = clamp(camera.y, -halfHeight, WORLD.height - halfHeight);
 }
 
+// The part of the canvas that the floating panels leave uncovered.
+function clearArea(): Rect {
+  const left = viewport.width > 900 ? 296 : 16;
+  return { x: left, y: 16, width: viewport.width - left - 16, height: viewport.height - 88 };
+}
+
 export function centerOn(point: Point): void {
   camera.x = point.x - viewport.width / (2 * camera.zoom);
   camera.y = point.y - viewport.height / (2 * camera.zoom);
+  constrain();
+}
+
+export function focusOn(point: Point): void {
+  const area = clearArea();
+  camera.x = point.x - (area.x + area.width / 2) / camera.zoom;
+  camera.y = point.y - (area.y + area.height / 2) / camera.zoom;
   constrain();
 }
 
@@ -57,13 +70,14 @@ export function zoomBy(factor: number): void {
   zoomAt(viewport.width / 2, viewport.height / 2, factor);
 }
 
-export function fitRect(rect: Rect, maxZoom = MAX_ZOOM, padding = 80): void {
+export function fitRect(rect: Rect, maxZoom = MAX_ZOOM, padding = 48): void {
+  const area = clearArea();
   const zoom = Math.min(
-    (viewport.width - padding * 2) / rect.width,
-    (viewport.height - padding * 2) / rect.height,
+    (area.width - padding * 2) / rect.width,
+    (area.height - padding * 2) / rect.height,
   );
   camera.zoom = clamp(zoom, MIN_ZOOM, maxZoom);
-  centerOn({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+  focusOn({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
 }
 
 export function fitRooms(rooms: Room[]): void {
