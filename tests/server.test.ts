@@ -605,6 +605,49 @@ describe('voice', () => {
   });
 });
 
+describe('allowed origins', () => {
+  const ALLOWED = 'https://nook.example';
+
+  async function attempt(origin?: string): Promise<'connected' | 'refused'> {
+    const socket: Client = io(url, {
+      transports: ['websocket'],
+      forceNew: true,
+      reconnection: false,
+      extraHeaders: origin ? { origin } : undefined,
+    });
+    clients.push(socket);
+    return new Promise((resolve) => {
+      socket.once('connect', () => resolve('connected'));
+      socket.once('connect_error', () => resolve('refused'));
+    });
+  }
+
+  it('accepts every origin when none are configured', async () => {
+    expect(await attempt('https://anywhere.example')).toBe('connected');
+  });
+
+  describe('when configured', () => {
+    beforeEach(async () => {
+      await stop();
+      clients = [];
+      await start({ origins: [ALLOWED] });
+    });
+
+    it('accepts pages served from an allowed origin', async () => {
+      expect(await attempt(ALLOWED)).toBe('connected');
+    });
+
+    it('refuses pages served from any other origin', async () => {
+      expect(await attempt('https://evil.example')).toBe('refused');
+      expect(await attempt(`${ALLOWED}.evil.example`)).toBe('refused');
+    });
+
+    it('still accepts clients that are not web pages', async () => {
+      expect(await attempt()).toBe('connected');
+    });
+  });
+});
+
 describe('persistence', () => {
   it('saves rooms with their owners and loads them again after a restart', async () => {
     await stop();
