@@ -1,9 +1,10 @@
 # Nook
 
-A small multiplayer 2D world in the spirit of Gather and Habbo. Rooms are not predefined: anyone can create, name, size and place a room in an editor, and rooms can never overlap or leave the world. Only the person who created a room can move, resize, rename or delete it. The same world is walkable, and chat is scoped to the room you stand in.
+A small multiplayer 2D world in the spirit of Gather and Habbo. Rooms are not predefined: anyone can create, name, size and place a room in an editor, and rooms can never overlap or leave the world. Only the person who created a room can move, resize, rename or delete it. The same world is walkable, and both text chat and voice chat are scoped to the room you stand in.
 
 - Frontend: Vite, React, TypeScript, one Canvas 2D element for the world
 - Backend: Node, Express, Socket.IO, one process, rooms saved to a JSON file
+- Voice: Agora, optional, switched on by two values in `.env`
 
 ## Run it locally
 
@@ -35,7 +36,8 @@ With both open on `http://localhost:5173`:
 6. Switch both windows to **Edit world**. In the first, create a room and click a free spot. It appears in the second window, dimmed.
 7. In the first window, drag the room onto another one. It turns red and snaps back when released. Move or resize it and watch the second window follow.
 8. In the second window, select that room. The panel shows who created it and has no fields, dragging it only pans the map, and Delete is refused.
-9. Close one window. The other drops to `1 online`.
+9. With voice set up (see [Voice chat](#voice-chat)), click **Join voice** in both windows. Each shows the other with a microphone icon, and a green ring appears around whoever is talking. Walk one avatar out of the room and the two stop hearing each other.
+10. Close one window. The other drops to `1 online`.
 
 Both servers listen on this machine only. To let a phone or another laptop on the same network join, set `HOST=0.0.0.0` in `.env`, run `npm run dev:server` in one terminal and `npm run dev:web -- --host` in another, then open the network URL that Vite prints. The operating system may ask to allow Node through its firewall.
 
@@ -48,6 +50,7 @@ Play mode
 | WASD or arrow keys | Walk |
 | Enter | Start typing, then send |
 | Esc | Leave the chat box |
+| M | Mute or unmute your microphone while in voice |
 | Scroll | Zoom |
 
 Edit mode
@@ -76,6 +79,10 @@ The client applies its own edits immediately and rolls back on a rejection. On e
 
 Each world room maps to a Socket.IO room. The server decides which room a player is in from their position, moves the socket between Socket.IO rooms as they walk, and sends chat only to that room. Everyone outside a room shares one channel.
 
+### Voice
+
+Voice follows the same rule as text chat: you hear the people in the room you stand in, or the others outside if you are in no room. Each room has its own Agora channel. When a browser joins voice it asks the server for a token, and the server issues one only for the channel of the room it has that player in, valid for ten minutes and for that player alone. Walking into another room leaves one channel and joins the next. The audio itself travels between the browsers and Agora, not through this server.
+
 ### Who can edit a room
 
 There are no accounts. Each browser keeps a random secret key in `localStorage` and sends it when it connects. The server turns the key into a public user id (a SHA-256 digest), records that id as the owner of every room the browser creates, and refuses any move, resize, rename or delete that comes from a different id. The owner is never taken from what a client sends, and other clients only ever see the id, not the key.
@@ -86,14 +93,31 @@ There are no accounts. Each browser keeps a random secret key in `localStorage` 
 
 ```
 shared/    types, constants, geometry rules, socket event types
-server/    Express + Socket.IO app, world state, persistence
-src/       React app: world canvas, editor, play mode, socket client
+server/    Express + Socket.IO app, world state, persistence, voice tokens
+src/       React app: world canvas, editor, play mode, voice, socket client
 tests/     geometry, resize math, and server tests over real sockets
 ```
 
+## Voice chat
+
+Voice is off until the backend has Agora credentials.
+
+1. Create a project in the [Agora console](https://console.agora.io) in secured mode (App ID + token).
+2. Copy its App ID and primary certificate into `.env` as `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE`.
+3. Restart the backend. Its startup log says `voice chat: on`, and a **Join voice** button appears in the top bar.
+
+Things to know:
+
+- Voice is opt-in. Nobody's microphone is used until they click **Join voice**, and the mute button or the M key silences it.
+- Browsers only allow microphone access on HTTPS or on `localhost`. Voice will not work when the page is opened through a plain network address such as `http://192.168.1.20:5173`.
+- Two windows on one computer share the same microphone and speakers, so they echo. Use headphones, or mute one window.
+- Someone without a microphone, or who refuses the permission prompt, still joins and can listen.
+- The Agora SDK is large, so it is downloaded only when someone joins voice.
+- The certificate is a secret. Only the backend reads it, and it is never sent to a browser.
+
 ## Configuration
 
-Nothing needs to be set for local use. To override a default, copy `.env.example` to `.env`.
+Nothing needs to be set for local use without voice. To override a default, copy `.env.example` to `.env`.
 
 | Variable | Used by | Default | Purpose |
 | --- | --- | --- | --- |
@@ -101,6 +125,8 @@ Nothing needs to be set for local use. To override a default, copy `.env.example
 | `HOST` | backend | `127.0.0.1` | Address the backend binds to |
 | `CLIENT_ORIGIN` | backend | any origin | Comma-separated frontend origins allowed to connect |
 | `DATA_DIR` | backend | `data` | Folder that holds `world.json` |
+| `AGORA_APP_ID` | backend | empty | Agora project id; voice is off without it |
+| `AGORA_APP_CERTIFICATE` | backend | empty | Agora project certificate, used to sign voice tokens |
 | `VITE_SERVER_URL` | frontend | this host, port 3001 | Address of the backend |
 
 Pointing the frontend at a hosted backend later only needs `VITE_SERVER_URL`, plus `CLIENT_ORIGIN` on that backend.
