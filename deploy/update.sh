@@ -10,6 +10,8 @@ npm run build:server
 pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 
+# Give the new process a moment to start listening, then confirm it answers.
+sleep 2
 port="$(grep -E '^PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2 | tr -d '[:space:]' || true)"
 curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-connrefused \
   "http://127.0.0.1:${port:-3001}/health"

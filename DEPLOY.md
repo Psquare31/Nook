@@ -193,7 +193,7 @@ Certbot adds the certificate to the Nginx site, redirects HTTP to HTTPS, and ren
 curl https://<DOMAIN>/health
 curl -i -N --http1.1 \
   -H "Connection: Upgrade" -H "Upgrade: websocket" \
-  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: SGVsbG8sIHdvcmxkIQ==" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   "https://<DOMAIN>/socket.io/?EIO=4&transport=websocket"
 ```
 
