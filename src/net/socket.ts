@@ -46,7 +46,8 @@ function withDefaults(snapshot: Snapshot): Snapshot {
   return {
     ...snapshot,
     voice: snapshot.voice ?? false,
-    auth: snapshot.auth ?? { googleClientId: null, account: null },
+    // A backend that old let everyone build.
+    auth: snapshot.auth ?? { googleClientId: null, account: null, canBuild: true },
   };
 }
 

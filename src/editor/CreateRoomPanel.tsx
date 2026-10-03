@@ -12,13 +12,24 @@ function normalizeSize(value: string): number | null {
 }
 
 function SignInToBuild() {
+  const signInAvailable = useStore((state) => state.auth.googleClientId !== null);
+
   return (
     <section className="card">
       <h2>Create room</h2>
-      <p className="help">
-        Sign in with Google to build rooms. Rooms you create stay yours on any device.
-      </p>
-      <GoogleSignIn />
+      {signInAvailable ? (
+        <>
+          <p className="help">
+            Sign in with Google to build rooms. Rooms you create stay yours on any device.
+          </p>
+          <GoogleSignIn />
+        </>
+      ) : (
+        <p className="help">
+          Building is off: this server has no Google sign-in set up. Add GOOGLE_CLIENT_ID and
+          SESSION_SECRET to the backend's environment and restart it.
+        </p>
+      )}
     </section>
   );
 }

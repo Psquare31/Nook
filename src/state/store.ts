@@ -95,7 +95,7 @@ export const useStore = create<State>((set, get) => ({
   draft: null,
   toasts: [],
   voice: { available: false, status: 'off', muted: false, hasMic: false, members: [], speaking: [] },
-  auth: { googleClientId: null, account: null },
+  auth: { googleClientId: null, account: null, canBuild: false },
 
   setMode: (mode) => set({ mode, placing: null, draft: null, selectedId: null }),
 
@@ -176,13 +176,13 @@ export function selfOwner(state: State): RoomOwner | null {
   return me ? { id: me.userId, name: me.name } : null;
 }
 
-// Mirrors the server's rule so the editor can show what is locked. The server still
-// checks every edit itself.
-// With Google sign-in configured on the server, only signed-in people may build.
+// The server decides this per connection and enforces it on every create.
 export function canBuild(state: State): boolean {
-  return state.auth.googleClientId === null || state.auth.account !== null;
+  return state.auth.canBuild;
 }
 
+// Mirrors the server's rule so the editor can show what is locked. The server still
+// checks every edit itself.
 export function canEdit(state: State, room: Room): boolean {
   const me = selfPlayer(state);
   return me !== undefined && room.owner?.id === me.userId;

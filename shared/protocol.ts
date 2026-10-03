@@ -29,10 +29,12 @@ export type Snapshot = {
   // Whether the server has voice credentials and can hand out voice tokens.
   voice: boolean;
   auth: {
-    // Null when Google sign-in is not configured; then everyone can build.
+    // Null when Google sign-in is not configured on the server.
     googleClientId: string | null;
     // Who this connection is signed in as, or null for a guest.
     account: Account | null;
+    // Whether this connection may create rooms.
+    canBuild: boolean;
   };
 };
 

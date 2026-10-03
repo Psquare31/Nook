@@ -33,7 +33,9 @@ export function describeRejection(reason: RejectReason, conflicts: string[] = []
     case 'name':
       return `Room names need 1 to ${ROOM_NAME_MAX} characters`;
     case 'signin':
-      return 'Sign in with Google to build rooms';
+      return useStore.getState().auth.googleClientId
+        ? 'Sign in with Google to build rooms'
+        : 'Building is off until Google sign-in is set up on the server';
     case 'forbidden':
       return 'Only the person who created a room can change it';
     case 'limit':

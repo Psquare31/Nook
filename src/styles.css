@@ -656,3 +656,9 @@ ul {
   color: var(--text);
   background: var(--surface-raised);
 }
+
+/* Google's button is an iframe. Under the page's dark color scheme the browser paints an
+   opaque white backdrop behind it; a light scheme on the container keeps it transparent. */
+.google-button {
+  color-scheme: light;
+}

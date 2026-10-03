@@ -50,7 +50,7 @@ To use sign-in locally, put the client id in `.env` as `GOOGLE_CLIENT_ID`, next 
 2. Choose **New** → **Blueprint**, and connect the `Psquare31/Nook` repository. Render reads `render.yaml` from the repo and generates `SESSION_SECRET` by itself.
 3. It asks for the values marked secret in that file:
    - `CLIENT_ORIGIN`: leave empty for now. Step 4 fills it in.
-   - `GOOGLE_CLIENT_ID`: `<CLIENT_ID>`. Leave it empty to run without sign-in, in which case everyone can build.
+   - `GOOGLE_CLIENT_ID`: `<CLIENT_ID>`. Without it nobody can sign in, so nobody can build. Render does not read your local `.env`; the value has to be entered here.
    - `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE`: your Agora values. Leave both empty to run without voice.
 4. Apply. The first build takes a few minutes.
 
@@ -118,7 +118,8 @@ Push to the `main` branch on GitHub. Render rebuilds and redeploys the backend, 
 | --- | --- |
 | The site says "Offline · retrying" | `VITE_SERVER_URL` is wrong or missing, or the frontend was not redeployed after setting it |
 | `/health` works but the site cannot connect | `CLIENT_ORIGIN` does not match `<VERCEL_URL>` exactly |
-| No **Sign in with Google** button | `GOOGLE_CLIENT_ID` is missing in Render, or the backend log says the id or `SESSION_SECRET` was rejected |
+| No **Sign in with Google** button, and the editor says "Building is off" | `GOOGLE_CLIENT_ID` is missing in Render's Environment tab, or the backend log says the id or `SESSION_SECRET` was rejected. `<RENDER_URL>/health` shows `"signIn":false` |
+| No **Sign in with Google** button, and anyone can build | The backend is running a commit from before sign-in. `<RENDER_URL>/health` has no `"building"` field. Use Manual Deploy → Deploy latest commit |
 | Google shows "origin is not allowed" or error 400 | `<VERCEL_URL>` (or `http://localhost:5173` locally) is missing from Authorized JavaScript origins, or was just added and is not active yet |
 | Google says access is blocked or the app is in testing | The account is not a test user and the app is not published (step 1.3) |
 | "Google sign-in could not be verified" | The client id in Render is not the one the button was made for |

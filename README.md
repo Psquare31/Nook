@@ -26,7 +26,7 @@ Use two browsers that do not share storage, so each is a separate person:
 
 Two tabs in the same window also give you two avatars, but they count as the same person for room ownership.
 
-With Google sign-in configured, sign in with a different Google account in each window before building. Without it, the steps below work as they are.
+With Google sign-in configured, sign in with a different Google account in each window before building. To try the editor without Google, start the backend with `ALLOW_BUILD_WITHOUT_SIGN_IN=true` in `.env` and no `GOOGLE_CLIENT_ID`.
 
 With both open on `http://localhost:5173`:
 
@@ -95,7 +95,9 @@ With `GOOGLE_CLIENT_ID` set, the top bar shows Google's **Sign in with Google** 
 
 Rooms are owned by a digest of the Google account id, so they are yours on any device. The backend refuses any move, resize, rename or delete from a different account, and it never takes the owner from what a client sends. Guests can walk, chat and use voice, but cannot build. A signed-in person's name comes from their Google account.
 
-Without `GOOGLE_CLIENT_ID` (the default for local development), there is no sign-in and everyone can build. Each browser then keeps a random secret key in `localStorage`, and rooms belong to a digest of that key. That key is per browser profile, and clearing site data discards it.
+Without `GOOGLE_CLIENT_ID` there is no sign-in, and nobody can build: the editor says so, and the backend's startup log and `/health` (`"building":"off"`) show it too. This is deliberate, so a missing setting cannot leave the world open to anyone.
+
+For local testing without Google, set `ALLOW_BUILD_WITHOUT_SIGN_IN=true`. Everyone can then build, each browser keeps a random secret key in `localStorage`, and rooms belong to a digest of that key. That key is per browser profile, and clearing site data discards it. Do not set this on a public server.
 
 The three starter rooms have no owner and are locked for everyone.
 
@@ -135,7 +137,8 @@ Nothing needs to be set for local use without voice. To override a default, copy
 | `DATA_DIR` | backend | `data` | Folder that holds `world.json` |
 | `AGORA_APP_ID` | backend | empty | Agora project id; voice is off without it |
 | `AGORA_APP_CERTIFICATE` | backend | empty | Agora project certificate, used to sign voice tokens |
-| `GOOGLE_CLIENT_ID` | backend | empty | Google OAuth client id; sign-in is off without it |
+| `GOOGLE_CLIENT_ID` | backend | empty | Google OAuth client id; without it nobody can sign in or build |
+| `ALLOW_BUILD_WITHOUT_SIGN_IN` | backend | empty | `true` lets everyone build when sign-in is not set up; local testing only |
 | `SESSION_SECRET` | backend | empty | 32+ random characters that sign login sessions; required with `GOOGLE_CLIENT_ID` |
 | `VITE_SERVER_URL` | frontend | this host, port 3001 | Address of the backend |
 

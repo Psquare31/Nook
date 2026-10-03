@@ -26,6 +26,7 @@ export function registerHandlers(
   state: WorldState,
   voice: VoiceConfig | null,
   auth: Auth | null,
+  openBuilding: boolean,
   saveRooms: () => void,
 ) {
   const switchChannel = ({ player, previous }: RoomChange) => {
@@ -40,8 +41,9 @@ export function registerHandlers(
     state.refreshOccupancy().forEach(switchChannel);
   };
 
-  // With sign-in on, only signed-in players may build; without it, everyone may.
-  const mayBuild = (signedIn: boolean) => auth === null || signedIn;
+  // With sign-in on, only signed-in players may build. Without it nobody may, unless the
+  // server was started with building explicitly opened to everyone for local testing.
+  const mayBuild = (signedIn: boolean) => (auth ? signedIn : openBuilding);
 
   // A session sent with the handshake identifies the connection for its whole life. An
   // invalid or expired one is not an error: the connection simply becomes a guest.
@@ -70,7 +72,11 @@ export function registerHandlers(
         rooms: state.listRooms(),
         players: state.listPlayers(),
         voice: voice !== null,
-        auth: { googleClientId: auth?.googleClientId ?? null, account },
+        auth: {
+          googleClientId: auth?.googleClientId ?? null,
+          account,
+          canBuild: mayBuild(player.signedIn),
+        },
       });
       socket.broadcast.emit('player:joined', player);
     });

@@ -32,8 +32,9 @@ let clients: Client[];
 
 const keyOf = (name: string) => `${name}-secret-key-0000`;
 
+// Most tests are about rooms rather than sign-in, so building is open unless a test says otherwise.
 async function start(options: Parameters<typeof createNook>[0] = {}) {
-  nook = createNook(options);
+  nook = createNook({ openBuilding: true, ...options });
   await new Promise<void>((resolve) => nook.httpServer.listen(0, '127.0.0.1', resolve));
   url = `http://127.0.0.1:${(nook.httpServer.address() as AddressInfo).port}`;
 }
@@ -651,6 +652,12 @@ describe('server config', () => {
     });
   });
 
+  it('keeps building closed without sign-in unless explicitly opened', () => {
+    expect(readServerConfig({}).openBuilding).toBe(false);
+    expect(readServerConfig({ ALLOW_BUILD_WITHOUT_SIGN_IN: 'yes' }).openBuilding).toBe(false);
+    expect(readServerConfig({ ALLOW_BUILD_WITHOUT_SIGN_IN: 'true' }).openBuilding).toBe(true);
+  });
+
   it('lets HOST override the Render default', () => {
     expect(readServerConfig({ RENDER: 'true', HOST: '127.0.0.1' }).host).toBe('127.0.0.1');
   });
@@ -779,8 +786,27 @@ describe('Google sign-in', () => {
   it('is off unless configured', async () => {
     const { socket, snapshot } = await connect('Asha');
 
-    expect(snapshot.auth).toEqual({ googleClientId: null, account: null });
+    expect(snapshot.auth).toEqual({ googleClientId: null, account: null, canBuild: true });
     expect(await socket.emitWithAck('auth:google', 'anything')).toEqual({ ok: false, reason: 'disabled' });
+  });
+
+  describe('when not configured and building is not opened', () => {
+    beforeEach(async () => {
+      await stop();
+      clients = [];
+      await start({ openBuilding: false });
+    });
+
+    it('lets nobody build, and says so', async () => {
+      const { socket, snapshot } = await connect('Asha');
+
+      const result = await socket.emitWithAck('room:create', STUDIO);
+      const health = await (await fetch(`${url}/health`)).json();
+
+      expect(snapshot.auth).toEqual({ googleClientId: null, account: null, canBuild: false });
+      expect(result).toEqual({ ok: false, reason: 'signin', conflicts: [], room: null });
+      expect(health).toMatchObject({ signIn: false, building: 'off' });
+    });
   });
 
   describe('when configured', () => {
@@ -793,7 +819,7 @@ describe('Google sign-in', () => {
     it('tells every client the Google client id, and guests that they are guests', async () => {
       const { snapshot, me } = await connect('Guest');
 
-      expect(snapshot.auth).toEqual({ googleClientId: GOOGLE_CLIENT_ID, account: null });
+      expect(snapshot.auth).toEqual({ googleClientId: GOOGLE_CLIENT_ID, account: null, canBuild: false });
       expect(me.signedIn).toBe(false);
     });
 
@@ -806,6 +832,7 @@ describe('Google sign-in', () => {
         picture: ASHA.picture,
       });
       expect(me).toMatchObject({ name: 'Asha Rao', signedIn: true });
+      expect(snapshot.auth.canBuild).toBe(true);
       expect(me.userId).toMatch(/^[0-9a-f]{16}$/);
       expect(JSON.stringify(snapshot)).not.toContain(ASHA.sub);
     });

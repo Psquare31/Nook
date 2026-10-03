@@ -9,6 +9,7 @@ export type ServerConfig = {
   dataFile: string;
   voice: VoiceConfig | null;
   auth: AuthConfig | null;
+  openBuilding: boolean;
 };
 
 export function readServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
@@ -25,5 +26,6 @@ export function readServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     dataFile: resolve(env.DATA_DIR || 'data', 'world.json'),
     voice: readVoiceConfig(env),
     auth: readAuthConfig(env),
+    openBuilding: env.ALLOW_BUILD_WITHOUT_SIGN_IN === 'true',
   };
 }
