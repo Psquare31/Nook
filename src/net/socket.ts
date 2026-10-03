@@ -40,7 +40,18 @@ const userKey = loadUserKey();
 // A tab with no saved position lets the server pick a free spot near the spawn.
 let placed = hasSavedPosition;
 
-function applySnapshot(snapshot: Snapshot): void {
+// A backend deployed before sign-in existed leaves these fields out. Filling them in keeps
+// a newer frontend usable while the backend catches up.
+function withDefaults(snapshot: Snapshot): Snapshot {
+  return {
+    ...snapshot,
+    voice: snapshot.voice ?? false,
+    auth: snapshot.auth ?? { googleClientId: null, account: null },
+  };
+}
+
+function applySnapshot(received: Snapshot): void {
+  const snapshot = withDefaults(received);
   const before = selfPlayer(useStore.getState());
   const { account } = snapshot.auth;
 
