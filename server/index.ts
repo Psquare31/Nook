@@ -1,21 +1,10 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { createNook } from './app';
-import { readVoiceConfig } from './voice';
+import { readServerConfig } from './config';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
-const port = Number(process.env.PORT) || 3001;
-// Loopback only unless HOST says otherwise, so a dev machine does not expose the world to its network.
-const host = process.env.HOST || '127.0.0.1';
-// Browsers send the origin without a trailing slash, so one typed here would never match.
-const origins = (process.env.CLIENT_ORIGIN ?? '')
-  .split(',')
-  .map((origin) => origin.trim().replace(/\/+$/, ''))
-  .filter(Boolean);
-const dataFile = resolve(process.env.DATA_DIR || 'data', 'world.json');
-const voice = readVoiceConfig(process.env);
-
+const { port, host, origins, dataFile, voice } = readServerConfig(process.env);
 const { httpServer, saver, state } = createNook({ dataFile, origins, voice });
 
 httpServer.on('error', (error) => {

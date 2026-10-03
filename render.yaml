@@ -1,0 +1,21 @@
+# Render Blueprint for the Nook backend. The frontend is deployed separately on Vercel.
+# The region cannot be changed later; without a `region` line Render uses oregon.
+services:
+  - type: web
+    name: nook
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build:server
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # The Vercel address of the frontend, for example https://nook.vercel.app
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: AGORA_APP_ID
+        sync: false
+      - key: AGORA_APP_CERTIFICATE
+        sync: false

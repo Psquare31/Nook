@@ -19,13 +19,23 @@ export function createNook({ dataFile, origins = [], voice = null }: NookOptions
   const saver = dataFile ? createSaver(dataFile, () => state.listRooms()) : null;
 
   const app = express();
+
+  // Polled by Render's health check and by an uptime monitor. Every request counts as
+  // traffic, which is what keeps a free Render service from going to sleep. Express
+  // answers HEAD on the same route, for monitors that only send HEAD.
   app.get('/health', (_request, response) => {
+    response.set('Cache-Control', 'no-store');
     response.json({
       ok: true,
+      uptime: Math.round(process.uptime()),
       rooms: state.listRooms().length,
       players: state.listPlayers().length,
       voice: voice !== null,
     });
+  });
+
+  app.get('/', (_request, response) => {
+    response.type('text/plain').send('Nook backend. Status: /health\n');
   });
 
   const httpServer = createServer(app);

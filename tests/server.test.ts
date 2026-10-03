@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { io, type Socket } from 'socket.io-client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createNook } from '../server/app';
+import { readServerConfig } from '../server/config';
 import { readVoiceConfig, voiceChannel } from '../server/voice';
 import { PLAYER_RADIUS, STARTER_ROOMS, WORLD } from '../shared/constants';
 import type {
@@ -602,6 +603,60 @@ describe('voice', () => {
         AGORA_APP_CERTIFICATE: credentials.certificate,
       }),
     ).toEqual(credentials);
+  });
+});
+
+describe('http endpoints', () => {
+  it('reports health without letting anything cache it', async () => {
+    await connect('Asha');
+
+    const response = await fetch(`${url}/health`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      rooms: STARTER_ROOMS.length,
+      players: 1,
+      voice: false,
+    });
+  });
+
+  it('answers HEAD on the health route for monitors that only send HEAD', async () => {
+    const response = await fetch(`${url}/health`, { method: 'HEAD' });
+
+    expect(response.status).toBe(200);
+  });
+
+  it('answers on the root path too, where some monitors point by default', async () => {
+    const response = await fetch(url);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('/health');
+  });
+});
+
+describe('server config', () => {
+  it('keeps to loopback and port 3001 by default', () => {
+    expect(readServerConfig({})).toMatchObject({ host: '127.0.0.1', port: 3001, origins: [] });
+  });
+
+  it('listens on every interface and on the given port when running on Render', () => {
+    expect(readServerConfig({ RENDER: 'true', PORT: '10000' })).toMatchObject({
+      host: '0.0.0.0',
+      port: 10000,
+    });
+  });
+
+  it('lets HOST override the Render default', () => {
+    expect(readServerConfig({ RENDER: 'true', HOST: '127.0.0.1' }).host).toBe('127.0.0.1');
+  });
+
+  it('reads a comma-separated origin list and drops trailing slashes', () => {
+    expect(
+      readServerConfig({ CLIENT_ORIGIN: 'https://nook.vercel.app/, https://nook-git-dev.vercel.app' })
+        .origins,
+    ).toEqual(['https://nook.vercel.app', 'https://nook-git-dev.vercel.app']);
   });
 });
 

@@ -122,7 +122,7 @@ Nothing needs to be set for local use without voice. To override a default, copy
 | Variable | Used by | Default | Purpose |
 | --- | --- | --- | --- |
 | `PORT` | backend | `3001` | Port the backend listens on |
-| `HOST` | backend | `127.0.0.1` | Address the backend binds to |
+| `HOST` | backend | `127.0.0.1`, or `0.0.0.0` on Render | Address the backend binds to |
 | `CLIENT_ORIGIN` | backend | any origin | Comma-separated frontend origins allowed to connect |
 | `DATA_DIR` | backend | `data` | Folder that holds `world.json` |
 | `AGORA_APP_ID` | backend | empty | Agora project id; voice is off without it |
@@ -145,14 +145,17 @@ A hosted setup needs `VITE_SERVER_URL` on the frontend and `CLIENT_ORIGIN` on th
 
 ## Deploying
 
-[DEPLOY.md](DEPLOY.md) walks through putting the backend on an Oracle Cloud Always Free VM (PM2, Nginx, Let's Encrypt) and the frontend on Vercel, with every command.
+[DEPLOY.md](DEPLOY.md) walks through putting the backend on Render's free plan (from `render.yaml`) and the frontend on Vercel, and pointing an uptime monitor at `/health` so the free service never sleeps.
 
 ## Resetting the world
 
 Rooms are saved in `data/world.json`. Stop the backend and delete that file to start again with the three starter rooms. This is also the way to clear rooms whose owner key is gone.
 
+On Render's free plan this file does not last: the disk is wiped whenever the service restarts or is redeployed.
+
 ## Not built yet
 
+- Lasting storage on Render's free plan: created rooms are lost when the service restarts
 - Accounts: ownership follows the browser, not a login, so it cannot be recovered or moved to another device
 - Chat history: messages are not stored
 - Rate limits: nothing stops a visitor from flooding the chat or filling the world with rooms
