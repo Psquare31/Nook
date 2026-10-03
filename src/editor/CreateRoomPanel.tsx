@@ -2,7 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { GRID, ROOM_MAX, ROOM_MIN, ROOM_NAME_MAX } from '../../shared/constants';
 import { clamp, snap } from '../../shared/geometry';
 import { newId } from '../lib/id';
-import { useStore } from '../state/store';
+import { GoogleSignIn } from '../auth/GoogleSignIn';
+import { canBuild, useStore } from '../state/store';
 
 function normalizeSize(value: string): number | null {
   const parsed = Number(value);
@@ -10,7 +11,24 @@ function normalizeSize(value: string): number | null {
   return clamp(snap(parsed), ROOM_MIN, ROOM_MAX);
 }
 
+function SignInToBuild() {
+  return (
+    <section className="card">
+      <h2>Create room</h2>
+      <p className="help">
+        Sign in with Google to build rooms. Rooms you create stay yours on any device.
+      </p>
+      <GoogleSignIn />
+    </section>
+  );
+}
+
 export function CreateRoomPanel() {
+  const allowed = useStore(canBuild);
+  return allowed ? <CreateRoomForm /> : <SignInToBuild />;
+}
+
+function CreateRoomForm() {
   const placing = useStore((state) => state.placing);
   const roomCount = useStore((state) => Object.keys(state.rooms).length);
   const startPlacing = useStore((state) => state.startPlacing);

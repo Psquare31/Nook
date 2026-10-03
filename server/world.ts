@@ -13,6 +13,10 @@ import type { Player, Point, Room, RoomOwner, RoomShape } from '../shared/types'
 
 export type RoomChange = { player: Player; previous: string | null };
 
+// Who a connection is, when the server already knows: a signed-in account, or a guest
+// who must not be tied to the browser key.
+export type Identity = { userId: string; name?: string; signedIn: boolean };
+
 export type DeleteResult =
   | { ok: true; removed: boolean }
   | Extract<DeleteAck, { ok: false }>;
@@ -62,7 +66,7 @@ function parsePoint(input: unknown): Point | null {
   };
 }
 
-function cleanName(input: unknown): string | null {
+export function cleanName(input: unknown): string | null {
   if (typeof input !== 'string') return null;
   return input.trim().replace(/\s+/g, ' ').slice(0, PLAYER_NAME_MAX) || null;
 }
@@ -149,14 +153,15 @@ export class WorldState {
     return { ok: true, removed: true };
   }
 
-  addPlayer(id: string, request: unknown): Player {
+  addPlayer(id: string, request: unknown, identity?: Identity): Player {
     const fields = isRecord(request) ? request : {};
     const position = parsePoint(fields) ?? this.spawnPoint();
     const player: Player = {
       id,
-      userId: publicUserId(fields.key),
+      userId: identity?.userId ?? publicUserId(fields.key),
+      signedIn: identity?.signedIn ?? false,
       voiceUid: this.players.get(id)?.voiceUid ?? this.freeVoiceUid(),
-      name: cleanName(fields.name) ?? 'Guest',
+      name: identity?.name ?? cleanName(fields.name) ?? 'Guest',
       color: this.players.get(id)?.color ?? PLAYER_COLORS[this.joined++ % PLAYER_COLORS.length],
       x: Math.round(position.x),
       y: Math.round(position.y),
@@ -183,11 +188,12 @@ export class WorldState {
     return { player, previous };
   }
 
-  // Returns the rooms whose "created by" label changed along with the name.
+  // Returns the rooms whose "created by" label changed along with the name. A signed-in
+  // player's name comes from their Google account and cannot be changed here.
   renamePlayer(id: string, input: unknown): { player: Player; rooms: Room[] } | null {
     const player = this.players.get(id);
     const name = cleanName(input);
-    if (!player || !name) return null;
+    if (!player || !name || player.signedIn) return null;
     player.name = name;
 
     const relabelled: Room[] = [];

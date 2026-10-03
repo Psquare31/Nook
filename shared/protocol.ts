@@ -1,5 +1,5 @@
 import type { PlacementReason } from './geometry';
-import type { Player, Point, Room, RoomShape, World } from './types';
+import type { Account, Player, Point, Room, RoomShape, World } from './types';
 
 export type RejectReason =
   | PlacementReason
@@ -7,7 +7,8 @@ export type RejectReason =
   | 'exists'
   | 'missing'
   | 'limit'
-  | 'forbidden';
+  | 'forbidden'
+  | 'signin';
 
 // A rejection carries the room as the server has it, so the client can put it back.
 export type RoomAck =
@@ -16,8 +17,8 @@ export type RoomAck =
 
 export type DeleteAck = { ok: true } | { ok: false; reason: RejectReason; room: Room | null };
 
-// `key` is a secret kept by the browser. The server turns it into the public user id
-// that room ownership is checked against.
+// `key` is a secret kept by the browser. Without Google sign-in configured, the server
+// turns it into the public user id that room ownership is checked against.
 export type JoinRequest = { name: string; key?: string; x?: number; y?: number };
 
 export type Snapshot = {
@@ -27,6 +28,12 @@ export type Snapshot = {
   players: Player[];
   // Whether the server has voice credentials and can hand out voice tokens.
   voice: boolean;
+  auth: {
+    // Null when Google sign-in is not configured; then everyone can build.
+    googleClientId: string | null;
+    // Who this connection is signed in as, or null for a guest.
+    account: Account | null;
+  };
 };
 
 // Everything a client needs to join the voice channel of the room it is standing in.
@@ -34,6 +41,11 @@ export type Snapshot = {
 export type VoiceGrant =
   | { ok: true; appId: string; channel: string; token: string; uid: number; roomId: string | null }
   | { ok: false; reason: 'disabled' | 'not-joined' };
+
+// The session is the server's own token, sent back on every later connection.
+export type SignInResult =
+  | { ok: true; session: string }
+  | { ok: false; reason: 'disabled' | 'invalid' };
 
 export type ChatMessage = {
   id: string;
@@ -44,6 +56,7 @@ export type ChatMessage = {
 
 export interface ClientToServerEvents {
   join: (request: JoinRequest, ack: (snapshot: Snapshot) => void) => void;
+  'auth:google': (credential: string, ack: (result: SignInResult) => void) => void;
   'room:create': (room: RoomShape, ack: (result: RoomAck) => void) => void;
   'room:update': (room: RoomShape, ack: (result: RoomAck) => void) => void;
   'room:delete': (id: string, ack: (result: DeleteAck) => void) => void;

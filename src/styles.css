@@ -600,3 +600,59 @@ ul {
 .people li.speaking .dot {
   box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.45);
 }
+
+.google-button {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+}
+
+.card .google-button {
+  justify-content: flex-start;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+}
+
+.account-picture {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.account-picture.placeholder {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.button-link {
+  flex: none;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.button-link:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}

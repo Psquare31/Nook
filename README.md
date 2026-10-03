@@ -1,6 +1,6 @@
 # Nook
 
-A small multiplayer 2D world in the spirit of Gather and Habbo. Rooms are not predefined: anyone can create, name, size and place a room in an editor, and rooms can never overlap or leave the world. Only the person who created a room can move, resize, rename or delete it. The same world is walkable, and both text chat and voice chat are scoped to the room you stand in.
+A small multiplayer 2D world in the spirit of Gather and Habbo. Rooms are not predefined: people signed in with Google can create, name, size and place a room in an editor, and rooms can never overlap or leave the world. Only the person who created a room can move, resize, rename or delete it. Anyone can walk around, chat and talk without signing in. The same world is walkable, and both text chat and voice chat are scoped to the room you stand in.
 
 - Frontend: Vite, React, TypeScript, one Canvas 2D element for the world
 - Backend: Node, Express, Socket.IO, one process, rooms saved to a JSON file
@@ -25,6 +25,8 @@ Use two browsers that do not share storage, so each is a separate person:
 - two Chrome profiles
 
 Two tabs in the same window also give you two avatars, but they count as the same person for room ownership.
+
+With Google sign-in configured, sign in with a different Google account in each window before building. Without it, the steps below work as they are.
 
 With both open on `http://localhost:5173`:
 
@@ -83,13 +85,19 @@ Each world room maps to a Socket.IO room. The server decides which room a player
 
 Voice follows the same rule as text chat: you hear the people in the room you stand in, or the others outside if you are in no room. Each room has its own Agora channel. When a browser joins voice it asks the server for a token, and the server issues one only for the channel of the room it has that player in, valid for ten minutes and for that player alone. Walking into another room leaves one channel and joins the next. The audio itself travels between the browsers and Agora, not through this server.
 
-### Who can edit a room
+### Sign-in and who can edit a room
 
-There are no accounts. Each browser keeps a random secret key in `localStorage` and sends it when it connects. The server turns the key into a public user id (a SHA-256 digest), records that id as the owner of every room the browser creates, and refuses any move, resize, rename or delete that comes from a different id. The owner is never taken from what a client sends, and other clients only ever see the id, not the key.
+With `GOOGLE_CLIENT_ID` set, the top bar shows Google's **Sign in with Google** button.
 
-- The key is per browser profile, so a reload, a new tab or a server restart keeps your rooms yours.
-- Clearing site data, or closing an Incognito session, discards the key. Rooms created with it stay in the world and nobody can edit them any more.
-- The three starter rooms have no owner and are locked for everyone.
+1. Google gives the browser an ID token for that client id.
+2. The browser sends the token to the backend once. The backend checks Google's signature, that the token was issued for this client id by `accounts.google.com`, and that it has not expired.
+3. The backend answers with its own session, signed with `SESSION_SECRET` and valid for 30 days. The browser keeps it in `localStorage` and sends it with every connection, so a reload or a server restart keeps you signed in.
+
+Rooms are owned by a digest of the Google account id, so they are yours on any device. The backend refuses any move, resize, rename or delete from a different account, and it never takes the owner from what a client sends. Guests can walk, chat and use voice, but cannot build. A signed-in person's name comes from their Google account.
+
+Without `GOOGLE_CLIENT_ID` (the default for local development), there is no sign-in and everyone can build. Each browser then keeps a random secret key in `localStorage`, and rooms belong to a digest of that key. That key is per browser profile, and clearing site data discards it.
+
+The three starter rooms have no owner and are locked for everyone.
 
 ```
 shared/    types, constants, geometry rules, socket event types
@@ -127,6 +135,8 @@ Nothing needs to be set for local use without voice. To override a default, copy
 | `DATA_DIR` | backend | `data` | Folder that holds `world.json` |
 | `AGORA_APP_ID` | backend | empty | Agora project id; voice is off without it |
 | `AGORA_APP_CERTIFICATE` | backend | empty | Agora project certificate, used to sign voice tokens |
+| `GOOGLE_CLIENT_ID` | backend | empty | Google OAuth client id; sign-in is off without it |
+| `SESSION_SECRET` | backend | empty | 32+ random characters that sign login sessions; required with `GOOGLE_CLIENT_ID` |
 | `VITE_SERVER_URL` | frontend | this host, port 3001 | Address of the backend |
 
 A hosted setup needs `VITE_SERVER_URL` on the frontend and `CLIENT_ORIGIN` on the backend. With `CLIENT_ORIGIN` set, the backend refuses connections from pages served anywhere else.
@@ -156,6 +166,5 @@ On Render's free plan this file does not last: the disk is wiped whenever the se
 ## Not built yet
 
 - Lasting storage on Render's free plan: created rooms are lost when the service restarts
-- Accounts: ownership follows the browser, not a login, so it cannot be recovered or moved to another device
 - Chat history: messages are not stored
 - Rate limits: nothing stops a visitor from flooding the chat or filling the world with rooms

@@ -11,7 +11,7 @@ import type { RejectReason, RoomAck } from '../../shared/protocol';
 import type { Room } from '../../shared/types';
 import { saveName } from '../lib/session';
 import { socket } from '../net/socket';
-import { canEdit, useStore } from './store';
+import { canBuild, canEdit, useStore } from './store';
 
 function listNames(names: string[]): string {
   if (names.length <= 1) return names[0] ?? 'another room';
@@ -32,6 +32,8 @@ export function describeRejection(reason: RejectReason, conflicts: string[] = []
       return `Rooms must be between ${ROOM_MIN} and ${ROOM_MAX} on each side`;
     case 'name':
       return `Room names need 1 to ${ROOM_NAME_MAX} characters`;
+    case 'signin':
+      return 'Sign in with Google to build rooms';
     case 'forbidden':
       return 'Only the person who created a room can change it';
     case 'limit':
@@ -78,7 +80,12 @@ function settle(attempted: Room, result: RoomAck): void {
 }
 
 export function createRoom(room: Room): boolean {
-  if (!online() || !fits(room)) return false;
+  if (!online()) return false;
+  if (!canBuild(useStore.getState())) {
+    useStore.getState().toast(describeRejection('signin'));
+    return false;
+  }
+  if (!fits(room)) return false;
   useStore.getState().upsertRoom(room);
   socket.emit('room:create', room, (result) => settle(room, result));
   return true;

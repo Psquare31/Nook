@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { PLAYER_NAME_MAX } from '../../shared/constants';
 import { rename } from '../state/actions';
 import { useStore, type Mode } from '../state/store';
+import { AccountChip } from '../auth/AccountChip';
+import { GoogleSignIn } from '../auth/GoogleSignIn';
 import { VoiceControl } from '../voice/VoiceControl';
 
 const MODES: { mode: Mode; label: string }[] = [
@@ -55,6 +57,7 @@ function NameField() {
 export function TopBar() {
   const mode = useStore((state) => state.mode);
   const setMode = useStore((state) => state.setMode);
+  const account = useStore((state) => state.auth.account);
 
   return (
     <header className="topbar">
@@ -77,7 +80,14 @@ export function TopBar() {
       <div className="spacer" />
       <VoiceControl />
       <Status />
-      <NameField />
+      {account ? (
+        <AccountChip account={account} />
+      ) : (
+        <>
+          <NameField />
+          <GoogleSignIn />
+        </>
+      )}
     </header>
   );
 }

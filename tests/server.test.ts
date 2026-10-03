@@ -1,10 +1,13 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer as createHttpServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from 'jose';
 import { io, type Socket } from 'socket.io-client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createNook } from '../server/app';
+import { readAuthConfig } from '../server/auth';
 import { readServerConfig } from '../server/config';
 import { readVoiceConfig, voiceChannel } from '../server/voice';
 import { PLAYER_RADIUS, STARTER_ROOMS, WORLD } from '../shared/constants';
@@ -699,6 +702,222 @@ describe('allowed origins', () => {
 
     it('still accepts clients that are not web pages', async () => {
       expect(await attempt()).toBe('connected');
+    });
+  });
+});
+
+describe('Google sign-in', () => {
+  const GOOGLE_CLIENT_ID = 'nook-test.apps.googleusercontent.com';
+  const SESSION_SECRET = 'a-session-secret-that-is-long-enough-1234';
+  const ASHA = { sub: '1001', name: 'Asha Rao', picture: 'https://lh3.googleusercontent.com/a/asha' };
+  const BEN = { sub: '2002', name: 'Ben Ito', picture: 'https://lh3.googleusercontent.com/a/ben' };
+
+  let google: HttpServer;
+  let googleKeysUrl: string;
+  let signingKey: CryptoKey;
+  let strangerKey: CryptoKey;
+
+  const authConfig = (sessionSecret = SESSION_SECRET) => ({
+    googleClientId: GOOGLE_CLIENT_ID,
+    sessionSecret,
+    googleKeysUrl,
+  });
+
+  // Stands in for https://www.googleapis.com/oauth2/v3/certs, publishing the test key.
+  beforeAll(async () => {
+    const pair = await generateKeyPair('RS256');
+    signingKey = pair.privateKey;
+    strangerKey = (await generateKeyPair('RS256')).privateKey;
+    const jwk = { ...(await exportJWK(pair.publicKey)), kid: 'test-key', alg: 'RS256', use: 'sig' };
+    google = createHttpServer((_request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ keys: [jwk] }));
+    });
+    await new Promise<void>((resolve) => google.listen(0, '127.0.0.1', resolve));
+    googleKeysUrl = `http://127.0.0.1:${(google.address() as AddressInfo).port}/certs`;
+  });
+
+  afterAll(() => new Promise<void>((resolve) => google.close(() => resolve())));
+
+  function googleToken(
+    person: typeof ASHA,
+    { audience = GOOGLE_CLIENT_ID, issuer = 'https://accounts.google.com', expiresIn = 3600, key = signingKey } = {},
+  ) {
+    const now = Math.floor(Date.now() / 1000);
+    return new SignJWT({ name: person.name, picture: person.picture, email: `${person.sub}@example.com` })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key' })
+      .setSubject(person.sub)
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setIssuedAt(now - 60)
+      .setExpirationTime(now + expiresIn)
+      .sign(key);
+  }
+
+  async function signIn(token: string) {
+    const socket = await open();
+    const result = await socket.emitWithAck('auth:google', token);
+    socket.disconnect();
+    return result;
+  }
+
+  async function connectWithSession(session: string, position: Point = INSIDE_LOUNGE) {
+    const socket: Client = io(url, { transports: ['websocket'], forceNew: true, auth: { session } });
+    clients.push(socket);
+    await new Promise<void>((resolve) => socket.once('connect', resolve));
+    const snapshot: Snapshot = await socket.emitWithAck('join', { name: 'typed name', ...position });
+    const me = snapshot.players.find((player) => player.id === socket.id)!;
+    return { socket, snapshot, me };
+  }
+
+  async function signedIn(person: typeof ASHA, position?: Point) {
+    const result = await signIn(await googleToken(person));
+    if (!result.ok) throw new Error('sign-in failed in test setup');
+    return { ...(await connectWithSession(result.session, position)), session: result.session };
+  }
+
+  it('is off unless configured', async () => {
+    const { socket, snapshot } = await connect('Asha');
+
+    expect(snapshot.auth).toEqual({ googleClientId: null, account: null });
+    expect(await socket.emitWithAck('auth:google', 'anything')).toEqual({ ok: false, reason: 'disabled' });
+  });
+
+  describe('when configured', () => {
+    beforeEach(async () => {
+      await stop();
+      clients = [];
+      await start({ auth: authConfig() });
+    });
+
+    it('tells every client the Google client id, and guests that they are guests', async () => {
+      const { snapshot, me } = await connect('Guest');
+
+      expect(snapshot.auth).toEqual({ googleClientId: GOOGLE_CLIENT_ID, account: null });
+      expect(me.signedIn).toBe(false);
+    });
+
+    it('trades a valid Google token for a session that identifies the account', async () => {
+      const { snapshot, me } = await signedIn(ASHA);
+
+      expect(snapshot.auth.account).toEqual({
+        id: me.userId,
+        name: 'Asha Rao',
+        picture: ASHA.picture,
+      });
+      expect(me).toMatchObject({ name: 'Asha Rao', signedIn: true });
+      expect(me.userId).toMatch(/^[0-9a-f]{16}$/);
+      expect(JSON.stringify(snapshot)).not.toContain(ASHA.sub);
+    });
+
+    it('refuses Google tokens that are for another app, from another issuer, expired or forged', async () => {
+      const refused = { ok: false, reason: 'invalid' };
+
+      expect(await signIn(await googleToken(ASHA, { audience: 'other.apps.googleusercontent.com' }))).toEqual(refused);
+      expect(await signIn(await googleToken(ASHA, { issuer: 'https://evil.example' }))).toEqual(refused);
+      expect(await signIn(await googleToken(ASHA, { expiresIn: -10 }))).toEqual(refused);
+      expect(await signIn(await googleToken(ASHA, { key: strangerKey }))).toEqual(refused);
+      expect(await signIn('not.a.token')).toEqual(refused);
+    });
+
+    it('treats a tampered, foreign or expired session as a guest', async () => {
+      const { session } = await signedIn(ASHA);
+      const [header, payload, signature] = session.split('.');
+      const flipped = signature.startsWith('A') ? `B${signature.slice(1)}` : `A${signature.slice(1)}`;
+      const foreign = await new SignJWT({ name: 'Asha Rao' })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setSubject('aaaaaaaaaaaaaaaa')
+        .setIssuer('nook')
+        .setExpirationTime('1h')
+        .sign(new TextEncoder().encode('some-other-secret-that-is-long-enough'));
+      const expired = await new SignJWT({ name: 'Asha Rao' })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setSubject('aaaaaaaaaaaaaaaa')
+        .setIssuer('nook')
+        .setExpirationTime(Math.floor(Date.now() / 1000) - 10)
+        .sign(new TextEncoder().encode(SESSION_SECRET));
+
+      for (const bad of [`${header}.${payload}.${flipped}`, foreign, expired]) {
+        const { snapshot, me } = await connectWithSession(bad);
+        expect(snapshot.auth.account).toBeNull();
+        expect(me.signedIn).toBe(false);
+      }
+    });
+
+    it('lets only signed-in people build', async () => {
+      const guest = await connect('Guest', OUTSIDE);
+      const asha = await signedIn(ASHA);
+
+      const byGuest = await guest.socket.emitWithAck('room:create', STUDIO);
+      const byAsha = await asha.socket.emitWithAck('room:create', STUDIO);
+
+      expect(byGuest).toEqual({ ok: false, reason: 'signin', conflicts: [], room: null });
+      expect(byAsha).toEqual({
+        ok: true,
+        room: { ...STUDIO, owner: { id: asha.me.userId, name: 'Asha Rao' } },
+      });
+    });
+
+    it('gives a Google account its rooms on every device, and nobody else', async () => {
+      const laptop = await signedIn(ASHA);
+      await laptop.socket.emitWithAck('room:create', STUDIO);
+      const phone = await signedIn(ASHA, OUTSIDE);
+      const ben = await signedIn(BEN, OUTSIDE);
+
+      expect(phone.me.userId).toBe(laptop.me.userId);
+      expect(await ben.socket.emitWithAck('room:update', { ...STUDIO, x: 700 })).toMatchObject({
+        ok: false,
+        reason: 'forbidden',
+      });
+      expect(await phone.socket.emitWithAck('room:update', { ...STUDIO, x: 800 })).toMatchObject({
+        ok: true,
+      });
+    });
+
+    it('does not let a guest use the old browser key to claim rooms', async () => {
+      const asha = await signedIn(ASHA);
+      await asha.socket.emitWithAck('room:create', STUDIO);
+      const guest = await connect('Guest', OUTSIDE, keyOf('Asha'));
+
+      expect(guest.me.userId).not.toBe(asha.me.userId);
+      expect(await guest.socket.emitWithAck('room:delete', 'studio')).toMatchObject({ ok: false });
+    });
+
+    it('keeps the Google name for signed-in people', async () => {
+      const asha = await signedIn(ASHA);
+      const renames = collect(asha.socket, 'player:renamed');
+
+      asha.socket.emit('player:rename', 'Someone else');
+      await settle();
+
+      expect(renames).toEqual([]);
+      expect(nook.state.getPlayer(asha.socket.id!)?.name).toBe('Asha Rao');
+    });
+
+    it('keeps sessions valid across a restart with the same secret only', async () => {
+      const { session, me } = await signedIn(ASHA);
+
+      await stop();
+      clients = [];
+      await start({ auth: authConfig() });
+      const sameSecret = await connectWithSession(session);
+      await stop();
+      clients = [];
+      await start({ auth: authConfig('a-different-secret-that-is-long-enough!') });
+      const newSecret = await connectWithSession(session);
+
+      expect(sameSecret.me).toMatchObject({ userId: me.userId, signedIn: true });
+      expect(newSecret.me.signedIn).toBe(false);
+    });
+  });
+
+  it('only turns on with a real-looking client id and a long enough secret', () => {
+    expect(readAuthConfig({})).toBeNull();
+    expect(readAuthConfig({ GOOGLE_CLIENT_ID: 'abc', SESSION_SECRET: SESSION_SECRET })).toBeNull();
+    expect(readAuthConfig({ GOOGLE_CLIENT_ID, SESSION_SECRET: 'short' })).toBeNull();
+    expect(readAuthConfig({ GOOGLE_CLIENT_ID: ` ${GOOGLE_CLIENT_ID} `, SESSION_SECRET })).toEqual({
+      googleClientId: GOOGLE_CLIENT_ID,
+      sessionSecret: SESSION_SECRET,
     });
   });
 });

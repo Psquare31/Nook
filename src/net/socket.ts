@@ -4,7 +4,7 @@ import type {
   ServerToClientEvents,
   Snapshot,
 } from '../../shared/protocol';
-import { loadUserKey } from '../lib/session';
+import { clearSession, loadSession, loadUserKey } from '../lib/session';
 import { selfPlayer, useStore } from '../state/store';
 import {
   bubbles,
@@ -22,7 +22,14 @@ const url =
 
 export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(url, {
   transports: ['websocket'],
+  // Read on every connection attempt, so signing in or out only needs a reconnect.
+  auth: (send) => send({ session: loadSession() ?? undefined }),
 });
+
+export function reconnect(): void {
+  socket.disconnect();
+  socket.connect();
+}
 
 function roomName(roomId: string | null): string | undefined {
   return roomId ? useStore.getState().rooms[roomId]?.name : undefined;
@@ -35,7 +42,15 @@ let placed = hasSavedPosition;
 
 function applySnapshot(snapshot: Snapshot): void {
   const before = selfPlayer(useStore.getState());
+  const { account } = snapshot.auth;
+
+  // The server did not accept the stored session: it expired, or sign-in was switched off.
+  if (!account && loadSession()) {
+    clearSession();
+    if (snapshot.auth.googleClientId) useStore.getState().toast('Your sign-in expired. Sign in again to build.');
+  }
   useStore.getState().applySnapshot(snapshot);
+  if (account) useStore.getState().setName(account.name);
   placed = true;
 
   remotes.clear();

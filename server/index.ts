@@ -4,8 +4,8 @@ import { readServerConfig } from './config';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 
-const { port, host, origins, dataFile, voice } = readServerConfig(process.env);
-const { httpServer, saver, state } = createNook({ dataFile, origins, voice });
+const { port, host, origins, dataFile, voice, auth } = readServerConfig(process.env);
+const { httpServer, saver, state } = createNook({ dataFile, origins, voice, auth });
 
 httpServer.on('error', (error) => {
   console.error(`Could not listen on ${host}:${port}: ${error.message}`);
@@ -17,6 +17,7 @@ httpServer.listen(port, host, () => {
   console.log(`  rooms: ${state.listRooms().length}, saved in ${dataFile}`);
   console.log(`  allowed origins: ${origins.length > 0 ? origins.join(', ') : 'any'}`);
   console.log(`  voice chat: ${voice ? 'on' : 'off (no Agora credentials)'}`);
+  console.log(`  Google sign-in: ${auth ? 'on, required to build rooms' : 'off, everyone can build'}`);
   if (process.env.NODE_ENV === 'production' && origins.length === 0) {
     console.warn('  CLIENT_ORIGIN is not set, so pages on any website can connect to this backend.');
   }

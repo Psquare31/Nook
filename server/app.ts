@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { STARTER_ROOMS } from '../shared/constants';
+import { createAuth, type AuthConfig } from './auth';
 import { registerHandlers, type NookServer } from './handlers';
 import { createSaver, loadRooms } from './persistence';
 import type { VoiceConfig } from './voice';
@@ -11,9 +12,10 @@ export type NookOptions = {
   dataFile?: string;
   origins?: string[];
   voice?: VoiceConfig | null;
+  auth?: AuthConfig | null;
 };
 
-export function createNook({ dataFile, origins = [], voice = null }: NookOptions = {}) {
+export function createNook({ dataFile, origins = [], voice = null, auth = null }: NookOptions = {}) {
   const saved = dataFile ? loadRooms(dataFile) : null;
   const state = new WorldState(saved ?? STARTER_ROOMS);
   const saver = dataFile ? createSaver(dataFile, () => state.listRooms()) : null;
@@ -31,6 +33,7 @@ export function createNook({ dataFile, origins = [], voice = null }: NookOptions
       rooms: state.listRooms().length,
       players: state.listPlayers().length,
       voice: voice !== null,
+      signIn: auth !== null,
     });
   });
 
@@ -50,7 +53,7 @@ export function createNook({ dataFile, origins = [], voice = null }: NookOptions
     // Every message this app sends is tiny; anything larger is not from this app.
     maxHttpBufferSize: 16 * 1024,
   });
-  registerHandlers(io, state, voice, () => saver?.schedule());
+  registerHandlers(io, state, voice, auth ? createAuth(auth) : null, () => saver?.schedule());
 
   return { httpServer, io, state, saver };
 }

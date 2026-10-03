@@ -15,6 +15,12 @@ services:
       # The Vercel address of the frontend, for example https://nook.vercel.app
       - key: CLIENT_ORIGIN
         sync: false
+      # OAuth client id from Google Cloud. Leave empty to run without sign-in.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      # Signs the backend's own login sessions. Render generates it once; changing it signs everyone out.
+      - key: SESSION_SECRET
+        generateValue: true
       - key: AGORA_APP_ID
         sync: false
       - key: AGORA_APP_CERTIFICATE

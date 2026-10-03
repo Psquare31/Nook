@@ -50,8 +50,28 @@ export function savePosition(point: Point): void {
   write('sessionStorage', POSITION_KEY, JSON.stringify({ x: Math.round(point.x), y: Math.round(point.y) }));
 }
 
-// The secret that proves which rooms this browser created. It lives in localStorage so it
-// outlasts the tab, which means every tab of one browser profile is the same room owner.
+const SESSION_KEY = 'nook:session';
+
+// The backend's own sign-in token, kept for a month so a reload stays signed in.
+export function loadSession(): string | null {
+  return read('localStorage', SESSION_KEY);
+}
+
+export function saveSession(token: string): void {
+  write('localStorage', SESSION_KEY, token);
+}
+
+export function clearSession(): void {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Nothing stored, nothing to clear.
+  }
+}
+
+// When the server has no Google sign-in, this secret proves which rooms this browser
+// created. It lives in localStorage so it outlasts the tab, which means every tab of one
+// browser profile is the same room owner.
 export function loadUserKey(): string {
   const stored = read('localStorage', USER_KEY);
   if (stored) return stored;

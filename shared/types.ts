@@ -20,9 +20,13 @@ export type Point = { x: number; y: number };
 
 export type World = { width: number; height: number };
 
+// A signed-in Google user, as the app knows them. The id is a digest of Google's account id.
+export type Account = { id: string; name: string; picture: string | null };
+
 export type Player = {
   id: string;
   userId: string;
+  signedIn: boolean;
   // The number this connection uses in the voice service, so clients can tell who is talking.
   voiceUid: number;
   name: string;

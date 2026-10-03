@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { readAuthConfig, type AuthConfig } from './auth';
 import { readVoiceConfig, type VoiceConfig } from './voice';
 
 export type ServerConfig = {
@@ -7,6 +8,7 @@ export type ServerConfig = {
   origins: string[];
   dataFile: string;
   voice: VoiceConfig | null;
+  auth: AuthConfig | null;
 };
 
 export function readServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
@@ -22,5 +24,6 @@ export function readServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
       .filter(Boolean),
     dataFile: resolve(env.DATA_DIR || 'data', 'world.json'),
     voice: readVoiceConfig(env),
+    auth: readAuthConfig(env),
   };
 }

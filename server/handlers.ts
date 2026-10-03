@@ -1,11 +1,20 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { Server } from 'socket.io';
 import { CHAT_MAX } from '../shared/constants';
 import type { ClientToServerEvents, ServerToClientEvents } from '../shared/protocol';
+import type { Account } from '../shared/types';
+import type { Auth } from './auth';
 import { grantVoice, type VoiceConfig } from './voice';
-import type { RoomChange, WorldState } from './world';
+import type { Identity, RoomChange, WorldState } from './world';
 
-export type NookServer = Server<ClientToServerEvents, ServerToClientEvents>;
+type SocketData = { account: Account | null };
+
+export type NookServer = Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
 
 // Each world room maps to one Socket.IO room, and everyone outside shares another.
 function channel(roomId: string | null): string {
@@ -16,6 +25,7 @@ export function registerHandlers(
   io: NookServer,
   state: WorldState,
   voice: VoiceConfig | null,
+  auth: Auth | null,
   saveRooms: () => void,
 ) {
   const switchChannel = ({ player, previous }: RoomChange) => {
@@ -30,6 +40,16 @@ export function registerHandlers(
     state.refreshOccupancy().forEach(switchChannel);
   };
 
+  // With sign-in on, only signed-in players may build; without it, everyone may.
+  const mayBuild = (signedIn: boolean) => auth === null || signedIn;
+
+  // A session sent with the handshake identifies the connection for its whole life. An
+  // invalid or expired one is not an error: the connection simply becomes a guest.
+  io.use(async (socket, next) => {
+    socket.data.account = auth ? await auth.readSession(socket.handshake.auth?.session) : null;
+    next();
+  });
+
   io.on('connection', (socket) => {
     socket.on('join', (request, ack) => {
       if (typeof ack !== 'function') return;
@@ -37,7 +57,12 @@ export function registerHandlers(
       const previous = state.getPlayer(socket.id);
       if (previous) socket.leave(channel(previous.roomId));
 
-      const player = state.addPlayer(socket.id, request);
+      const account = socket.data.account ?? null;
+      let identity: Identity | undefined;
+      if (account) identity = { userId: account.id, name: account.name, signedIn: true };
+      else if (auth) identity = { userId: randomBytes(8).toString('hex'), signedIn: false };
+
+      const player = state.addPlayer(socket.id, request, identity);
       socket.join(channel(player.roomId));
       ack({
         selfId: player.id,
@@ -45,8 +70,19 @@ export function registerHandlers(
         rooms: state.listRooms(),
         players: state.listPlayers(),
         voice: voice !== null,
+        auth: { googleClientId: auth?.googleClientId ?? null, account },
       });
       socket.broadcast.emit('player:joined', player);
+    });
+
+    // Trades Google's ID token for the app's own session. The client then reconnects
+    // with that session, so the new identity applies from a clean join.
+    socket.on('auth:google', async (credential, ack) => {
+      if (typeof ack !== 'function') return;
+      if (!auth) return ack({ ok: false, reason: 'disabled' });
+
+      const result = await auth.signIn(credential);
+      ack(result ? { ok: true, session: result.session } : { ok: false, reason: 'invalid' });
     });
 
     // The channel is chosen from where the server has the player, never from the request,
@@ -64,6 +100,9 @@ export function registerHandlers(
       const player = state.getPlayer(socket.id);
       if (typeof ack !== 'function' || !player) return;
 
+      if (!mayBuild(player.signedIn)) {
+        return ack({ ok: false, reason: 'signin', conflicts: [], room: null });
+      }
       const result = state.createRoom(room, { id: player.userId, name: player.name });
       ack(result);
       if (result.ok) {

@@ -1,8 +1,9 @@
-import { canEdit, useStore } from '../state/store';
+import { canBuild, canEdit, useStore } from '../state/store';
 
 export function Hint() {
   const mode = useStore((state) => state.mode);
   const placing = useStore((state) => state.placing !== null);
+  const builder = useStore(canBuild);
   const selection = useStore((state) => {
     const room = state.selectedId ? state.rooms[state.selectedId] : undefined;
     if (!room) return 'none';
@@ -15,7 +16,9 @@ export function Hint() {
   else if (selection === 'mine') {
     text = 'Drag to move · Pull an edge or corner to resize · Arrows nudge · Del deletes';
   } else if (selection === 'locked') {
-    text = 'You can only change rooms you created';
+    text = builder ? 'You can only change rooms you created' : 'Sign in with Google to build rooms';
+  } else if (!builder) {
+    text = 'Sign in with Google to build rooms · Drag empty space to pan · Scroll to zoom';
   }
 
   return <div className="hint">{text}</div>;

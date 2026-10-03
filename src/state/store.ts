@@ -52,6 +52,7 @@ type State = {
   draft: Draft | null;
   toasts: Toast[];
   voice: VoiceState;
+  auth: Snapshot['auth'];
   setMode: (mode: Mode) => void;
   setConnection: (connection: Connection) => void;
   applySnapshot: (snapshot: Snapshot) => void;
@@ -94,6 +95,7 @@ export const useStore = create<State>((set, get) => ({
   draft: null,
   toasts: [],
   voice: { available: false, status: 'off', muted: false, hasMic: false, members: [], speaking: [] },
+  auth: { googleClientId: null, account: null },
 
   setMode: (mode) => set({ mode, placing: null, draft: null, selectedId: null }),
 
@@ -110,6 +112,7 @@ export const useStore = create<State>((set, get) => ({
         players: Object.fromEntries(snapshot.players.map((player) => [player.id, toInfo(player)])),
         selectedId: state.selectedId && rooms[state.selectedId] ? state.selectedId : null,
         voice: { ...state.voice, available: snapshot.voice },
+        auth: snapshot.auth,
       };
     }),
 
@@ -175,6 +178,11 @@ export function selfOwner(state: State): RoomOwner | null {
 
 // Mirrors the server's rule so the editor can show what is locked. The server still
 // checks every edit itself.
+// With Google sign-in configured on the server, only signed-in people may build.
+export function canBuild(state: State): boolean {
+  return state.auth.googleClientId === null || state.auth.account !== null;
+}
+
 export function canEdit(state: State, room: Room): boolean {
   const me = selfPlayer(state);
   return me !== undefined && room.owner?.id === me.userId;
