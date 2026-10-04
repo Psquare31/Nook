@@ -122,6 +122,7 @@ Push to the `main` branch on GitHub. Render rebuilds and redeploys the backend, 
 | No **Sign in with Google** button, and anyone can build | The backend is running a commit from before sign-in. `<RENDER_URL>/health` has no `"building"` field. Use Manual Deploy → Deploy latest commit |
 | Google shows "origin is not allowed" or error 400 | `<VERCEL_URL>` (or `http://localhost:5173` locally) is missing from Authorized JavaScript origins, or was just added and is not active yet |
 | Google says access is blocked or the app is in testing | The account is not a test user and the app is not published (step 1.3) |
+| Console shows "[GSI_LOGGER]: Failed to open popup window" | The browser blocked the window Google opens. Use a normal Chrome or Edge tab, not an editor's preview pane, and allow pop-ups for the site. In Chrome the button uses the built-in account chooser and needs no pop-up when you are signed in to Google |
 | "Google sign-in could not be verified" | The client id in Render is not the one the button was made for |
 | Everyone was signed out | `SESSION_SECRET` changed |
 | The first visit takes about a minute | The service was asleep. Check that the uptime monitor is running and pointed at `/health` |

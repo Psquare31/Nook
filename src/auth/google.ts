@@ -40,7 +40,13 @@ async function onCredential({ credential }: GoogleCredentialResponse): Promise<v
 export async function renderGoogleButton(parent: HTMLElement, clientId: string): Promise<void> {
   const google = await loadGoogle();
   if (initializedFor !== clientId) {
-    google.initialize({ client_id: clientId, callback: (response) => void onCredential(response) });
+    google.initialize({
+      client_id: clientId,
+      callback: (response) => void onCredential(response),
+      // Chrome then shows its own account chooser instead of a pop-up window, which pop-up
+      // blockers cannot stop. Other browsers keep using the pop-up.
+      use_fedcm_for_button: true,
+    });
     initializedFor = clientId;
   }
   google.renderButton(parent, {
@@ -50,6 +56,12 @@ export async function renderGoogleButton(parent: HTMLElement, clientId: string):
     text: 'signin_with',
     shape: 'pill',
   });
+}
+
+// Embedded browsers, such as an editor's preview pane, refuse the window Google opens, so
+// sign-in cannot work there however the page is set up.
+export function isEmbeddedBrowser(): boolean {
+  return window.self !== window.top || /\bElectron\//.test(navigator.userAgent);
 }
 
 export function signOut(): void {

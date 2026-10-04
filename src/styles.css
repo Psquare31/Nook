@@ -662,3 +662,19 @@ ul {
 .google-button {
   color-scheme: light;
 }
+
+.sign-in-elsewhere {
+  display: block;
+  max-width: 260px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #f5a524;
+  text-decoration: none;
+  background: rgba(245, 165, 36, 0.12);
+  border-radius: 8px;
+}
+
+.sign-in-elsewhere:hover {
+  text-decoration: underline;
+}

@@ -93,6 +93,8 @@ With `GOOGLE_CLIENT_ID` set, the top bar shows Google's **Sign in with Google** 
 2. The browser sends the token to the backend once. The backend checks Google's signature, that the token was issued for this client id by `accounts.google.com`, and that it has not expired.
 3. The backend answers with its own session, signed with `SESSION_SECRET` and valid for 30 days. The browser keeps it in `localStorage` and sends it with every connection, so a reload or a server restart keeps you signed in.
 
+Sign in from a normal browser tab. Embedded browsers, such as an editor's preview pane, block the window Google opens; the page shows a note there instead of the button.
+
 Rooms are owned by a digest of the Google account id, so they are yours on any device. The backend refuses any move, resize, rename or delete from a different account, and it never takes the owner from what a client sends. Guests can walk, chat and use voice, but cannot build. A signed-in person's name comes from their Google account.
 
 Without `GOOGLE_CLIENT_ID` there is no sign-in, and nobody can build: the editor says so, and the backend's startup log and `/health` (`"building":"off"`) show it too. This is deliberate, so a missing setting cannot leave the world open to anyone.
